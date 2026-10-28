@@ -1,0 +1,58 @@
+from flask import g, jsonify
+from .routes import api, authenticated, body
+from . import ride_service as service
+
+
+@api.get('/workspace')
+@authenticated()
+def workspace():
+    return jsonify(service.snapshot(g.user))
+
+
+@api.post('/fares/quotes')
+@authenticated('rider')
+def quote():
+    return jsonify(quote=service.quote(g.user, body())), 201
+
+
+@api.post('/rides')
+@authenticated('rider')
+def book():
+    return jsonify(ride=service.book(g.user, body())), 201
+
+
+@api.get('/rides/<ride_id>')
+@authenticated()
+def details(ride_id):
+    service.expire()
+    return jsonify(ride=service.public(service.accessible(g.user, ride_id), g.user))
+
+
+@api.post('/driver/availability')
+@authenticated('driver')
+def availability():
+    return jsonify(service.availability(g.user, body()))
+
+
+@api.post('/rides/<ride_id>/accept')
+@authenticated('driver')
+def accept(ride_id):
+    return jsonify(ride=service.accept(g.user, ride_id))
+
+
+@api.post('/rides/<ride_id>/reject')
+@authenticated('driver')
+def reject(ride_id):
+    return jsonify(service.reject(g.user, ride_id))
+
+
+@api.post('/rides/<ride_id>/<action>')
+@authenticated()
+def progress(ride_id, action):
+    return jsonify(ride=service.move(g.user, ride_id, action))
+
+
+@api.post('/admin/drivers/<int:driver_id>/approve')
+@authenticated('admin')
+def approve(driver_id):
+    return jsonify(user=service.approve(g.user, driver_id, body()))

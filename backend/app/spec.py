@@ -25,3 +25,19 @@ SPEC = {
         '/admin/overview': {'get': operation('Admin-only foundation overview', protected=True)},
     },
 }
+
+SPEC['info']['version'] = '0.2.0'
+SPEC['info']['title'] = 'ridez development ride simulator API'
+SPEC['info']['description'] += ' Simulator uses sample rates and one 30-second invitation round. No GPS, geocoding, payments or expanding search yet.'
+SPEC['paths'].update({
+    '/workspace': {'get': operation('Read your rides, active trip, invitations, earnings or admin driver queue', protected=True)},
+    '/fares/quotes': {'post': operation('Create a five-minute simulated quote', ['pickup', 'destination'], protected=True, status='201')},
+    '/rides': {'post': operation('Book a quote; quote ID is the idempotency key', ['quote_id'], protected=True, status='201')},
+    '/driver/availability': {'post': operation('Change approved driver simulator availability', protected=True)},
+})
+SPEC['paths']['/driver/availability']['post']['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'type': 'object', 'required': ['available'], 'properties': {'available': {'type': 'boolean'}}}}}}
+for action in ['accept', 'reject', 'cancel', 'depart', 'arrive', 'start', 'complete']:
+    route = '/rides/{ride_id}/' + action
+    SPEC['paths'][route] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'post': operation(f'{action.capitalize()} a ride with permission and state checks', protected=True)}
+SPEC['paths']['/rides/{ride_id}'] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'get': operation('Get a ride you participate in (or admin)', protected=True)}
+SPEC['paths']['/admin/drivers/{driver_id}/approve'] = {'parameters': [{'name': 'driver_id', 'in': 'path', 'required': True, 'schema': {'type': 'integer'}}], 'post': operation('Approve pending driver and record an audit reason', ['reason'], protected=True)}

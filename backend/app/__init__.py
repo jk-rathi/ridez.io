@@ -29,11 +29,13 @@ def create_app(config=None):
     app.config.update(SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///ridez.db') if development else os.getenv('DATABASE_URL'), JWT_SECRET=jwt_secret, USER_CODE_SECRET=code_secret, SQLALCHEMY_TRACK_MODIFICATIONS=False)
     if config:
         app.config.update(config)
+    app.config.setdefault('SIMULATOR_ENABLED', development and os.getenv('SIMULATOR_ENABLED', '1') == '1')
     if not all(app.config.get(k) for k in ('SQLALCHEMY_DATABASE_URI', 'JWT_SECRET', 'USER_CODE_SECRET')):
         raise RuntimeError('DATABASE_URL, JWT_SECRET and USER_CODE_SECRET are required outside development')
     db.init_app(app)
     Migrate(app, db)
     from .routes import api
+    from . import ride_routes
     app.register_blueprint(api, url_prefix='/api/v1')
 
     @app.errorhandler(404)

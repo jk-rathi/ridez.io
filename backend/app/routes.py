@@ -62,7 +62,7 @@ def limit_auth():
 
 @api.get('/health')
 def health():
-    return jsonify(status='ok', stage='foundation', storage='sqlite-development' if current_app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite') else 'sql-server')
+    return jsonify(status='ok', stage='ride-simulator', simulator=current_app.config['SIMULATOR_ENABLED'], storage='sqlite-development' if current_app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite') else 'sql-server')
 
 
 @api.post('/auth/register')
@@ -84,13 +84,16 @@ def me():
 @api.get('/driver/overview')
 @authenticated('driver')
 def driver():
-    return jsonify(approval=g.user.status, trips=0, allocated_earnings='0.00', availability_enabled=False)
+    from .ride_service import snapshot
+    data = snapshot(g.user)
+    return jsonify(approval=g.user.status, trips=sum(ride['status'] == 'COMPLETED' for ride in data['rides']), allocated_earnings=data['allocated_earnings'], availability_enabled=g.user.status == 'active' and data['simulator'], available=data['available'])
 
 
 @api.get('/admin/overview')
 @authenticated('admin')
 def admin():
-    return jsonify(stage='foundation', message='Operational metrics will be connected with the ride lifecycle')
+    from .ride_service import snapshot
+    return jsonify(snapshot(g.user))
 
 
 @api.get('/openapi.json')
