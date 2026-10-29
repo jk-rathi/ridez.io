@@ -8,6 +8,7 @@ from . import db
 from . import ride_repository as repo
 from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, AdminAudit
 from .services import ApiError
+from . import location_service, matching
 
 
 def now():
@@ -33,6 +34,8 @@ def text(data, key, limit=160):
 def quote(user, data):
     simulator()
     pickup, destination = text(data, 'pickup'), text(data, 'destination')
+    latitude = location_service.coordinate(data.get('pickup_lat'), 'Pickup latitude', 90)
+    longitude = location_service.coordinate(data.get('pickup_lng'), 'Pickup longitude', 180)
     if pickup.casefold() == destination.casefold():
         raise ApiError('Pickup and destination must be different')
     # Deterministic fixture, not geocoding, actual road distance, or commercial pricing.
@@ -40,17 +43,13 @@ def quote(user, data):
     distance = money(Decimal(200 + seed % 1800) / 100)
     duration = max(5, int(distance * 3))
     base, distance_fare, time_fare = money(40), money(distance * 12), money(Decimal(duration) * 2)
-    result = repo.add(FareQuote(id=str(uuid4()), rider_id=user.id, pickup=pickup, destination=destination, distance_km=distance, duration_min=duration, base=base, distance_fare=distance_fare, time_fare=time_fare, total=base + distance_fare + time_fare, expires_at=now() + timedelta(minutes=5)))
+    result = repo.add(FareQuote(id=str(uuid4()), rider_id=user.id, pickup=pickup, destination=destination, pickup_lat=latitude, pickup_lng=longitude, distance_km=distance, duration_min=duration, base=base, distance_fare=distance_fare, time_fare=time_fare, total=base + distance_fare + time_fare, expires_at=now() + timedelta(minutes=5)))
     repo.commit()
     return result.public()
 
 
 def expire():
-    for ride in repo.expired_searches(now()):
-        if repo.transition(ride.id, 'SEARCHING', 'NO_DRIVER_FOUND'):
-            repo.close_invitations(ride.id)
-            repo.release(ride.id)
-    repo.commit()
+    matching.advance()
     db.session.expire_all()
 
 
@@ -65,7 +64,7 @@ def public(ride, user, invitation=False):
     quoted = repo.get(FareQuote, ride.quote_id)
     driver = repo.get(User, ride.driver_id) if ride.driver_id else None
     rider = repo.get(User, ride.rider_id)
-    result = dict(id=ride.id, status=ride.status, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
+    result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
     if not invitation:
         allocation = repo.get(RevenueLedger, ride.id)
         result['settlement'] = allocation.public() if allocation else None
@@ -86,14 +85,16 @@ def book(user, data):
         return public(existing, user)
     if quoted.expires_at <= now():
         raise ApiError('Quote expired. Request a new estimate', 409)
+    if quoted.pickup_lat is None:
+        raise ApiError('Get a new quote with pickup coordinates', 409)
     if repo.get(ActiveRide, user.id):
         raise ApiError('You already have an active ride', 409)
-    ride = repo.add(Ride(id=str(uuid4()), rider_id=user.id, quote_id=quoted.id, status='SEARCHING', requested_at=now(), expires_at=now() + timedelta(seconds=30)))
+    ride = repo.add(Ride(id=str(uuid4()), rider_id=user.id, quote_id=quoted.id, status='SEARCHING', round_no=1, radius_m=500, requested_at=now(), expires_at=now() + timedelta(seconds=current_app.config['MATCH_ROUND_SECONDS'])))
     try:
         db.session.flush()
         repo.add(ActiveRide(user_id=user.id, ride_id=ride.id))
-        for driver in repo.eligible_drivers():
-            repo.add(Invitation(ride_id=ride.id, driver_id=driver.driver_id, status='PENDING'))
+        matching.invite(ride, ride.requested_at)
+        repo.notify_ride(ride)
         repo.commit()
     except IntegrityError:
         repo.rollback()
@@ -105,22 +106,28 @@ def book(user, data):
 
 
 def availability(user, data):
-    simulator()
     expire()
     if user.status != 'active':
         raise ApiError('Admin approval is required before going available', 403)
     available = data.get('available')
     if not isinstance(available, bool):
         raise ApiError('Available must be true or false')
+    if available:
+        simulator()
     if repo.get(ActiveRide, user.id):
         raise ApiError('Complete your active trip before changing availability', 409)
     try:
+        if available:
+            location_service.update(user, data, initializing=True)
         repo.set_available(user.id, available)
+        if not available:
+            from sqlalchemy import update
+            db.session.execute(update(Invitation).where(Invitation.driver_id == user.id, Invitation.status == 'PENDING').values(status='OFFLINE'))
+        repo.notify(user.id)
         repo.commit()
     except IntegrityError:
         repo.rollback()
         raise ApiError('Availability changed concurrently. Refresh and retry', 409)
-    # Search invitations are snapshots: going online later applies to new bookings.
     return dict(available=available)
 
 
@@ -136,6 +143,9 @@ def accept(user, ride_id):
         return public(ride, user)
     if user.status != 'active' or not presence or not presence.available:
         raise ApiError('You must be approved and available to accept', 403)
+    from .models import DriverLocation
+    if not location_service.is_fresh(repo.get(DriverLocation, user.id)):
+        raise ApiError('Refresh your location before accepting', 409)
     if invitation.status != 'PENDING' or ride.status != 'SEARCHING' or ride.expires_at <= now():
         raise ApiError('This invitation is no longer available', 409)
     if repo.get(ActiveRide, user.id):
@@ -148,6 +158,8 @@ def accept(user, ride_id):
         repo.close_invitations(ride.id, 'CLOSED')
         invitation.status = 'ACCEPTED'
         repo.set_available(user.id, False)
+        matching.close_round(ride, 'ASSIGNED')
+        repo.notify_ride(ride)
         repo.commit()
     except IntegrityError:
         repo.rollback()
@@ -163,6 +175,7 @@ def reject(user, ride_id):
         raise ApiError('Invitation not found', 404)
     if invitation.status == 'PENDING':
         invitation.status = 'REJECTED'
+        repo.notify(user.id)
         repo.commit()
     return dict(status=invitation.status)
 
@@ -182,6 +195,7 @@ def move(user, ride_id, action):
             raise ApiError('Ride changed. Refresh and retry', 409)
         repo.close_invitations(ride.id, 'CLOSED')
         repo.release(ride.id)
+        matching.close_round(ride, 'CANCELLED')
     else:
         if user.role != 'driver' or ride.driver_id != user.id:
             raise ApiError('Only the assigned driver can progress this trip', 403)
@@ -202,6 +216,7 @@ def move(user, ride_id, action):
             repo.add(RevenueLedger(ride_id=ride.id, driver_id=user.id, eligible_fare=quoted.total, driver_pct=Decimal('85.00'), company_pct=Decimal('15.00'), driver_amount=driver_amount, company_amount=quoted.total - driver_amount))
             repo.release(ride.id)
             # End offline deliberately; driver chooses when to take another request.
+    repo.notify_ride(ride)
     repo.commit()
     db.session.expire_all()
     return public(repo.get(Ride, ride_id), user)
@@ -213,11 +228,14 @@ def snapshot(user):
     active = repo.get(ActiveRide, user.id)
     result = {'rides': [public(ride, user) for ride in rides], 'active_ride': public(repo.get(Ride, active.ride_id), user) if active else None, 'simulator': current_app.config['SIMULATOR_ENABLED'], 'user': user.public()}
     if user.role == 'driver':
+        from .models import DriverLocation
         presence = repo.get(DriverPresence, user.id)
+        result['location'] = location_service.public(repo.get(DriverLocation, user.id))
         entries = repo.ledger(user.id)
-        result.update(available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
+        result.update(available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and result['location']['fresh'] and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
     if user.role == 'admin':
-        result['drivers'] = [driver.public() for driver in repo.drivers()]
+        from .models import DriverLocation
+        result['drivers'] = [driver.public() | {'location': location_service.public(repo.get(DriverLocation, driver.id))} for driver in repo.drivers()]
     return result
 
 
@@ -231,5 +249,6 @@ def approve(user, driver_id, data):
     if driver.status == 'pending':
         driver.status = 'active'
         repo.add(AdminAudit(id=str(uuid4()), admin_id=user.id, driver_id=driver.id, action='driver.approved', reason=reason, created_at=now()))
+        repo.notify(driver.id)
         repo.commit()
     return driver.public()

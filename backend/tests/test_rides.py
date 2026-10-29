@@ -33,11 +33,11 @@ def post(client, actors, actor, path, **data):
 def prepare(client, actors, driver='driver'):
     response=post(client,actors,'admin',f"/admin/drivers/{actors[driver]['id']}/approve",reason='Documents reviewed for test')
     assert response.status_code == 200
-    assert post(client,actors,driver,'/driver/availability',available=True).status_code == 200
+    assert post(client,actors,driver,'/driver/availability',available=True,latitude=19.076,longitude=72.8777,accuracy_m=10,recorded_at=now().isoformat()+'Z').status_code == 200
 
 
 def quote(client, actors, rider='rider'):
-    response=post(client,actors,rider,'/fares/quotes',pickup='City centre',destination='Riverside')
+    response=post(client,actors,rider,'/fares/quotes',pickup='City centre',destination='Riverside',pickup_lat=19.076,pickup_lng=72.8777)
     assert response.status_code == 201
     return response.json['quote']
 
@@ -90,6 +90,7 @@ def test_quote_validation_ownership_expiry_and_idempotent_booking(client, app, a
 
 
 def test_expired_invitation_rejection_and_cancel(client, app, actors):
+    app.config['MATCH_MAX_RADIUS_M']=500
     prepare(client,actors)
     ride=book(client,actors)
     with app.app_context():

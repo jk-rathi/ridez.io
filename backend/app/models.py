@@ -37,9 +37,11 @@ class FareQuote(db.Model):
     time_fare = db.Column(db.Numeric(10, 2), nullable=False)
     total = db.Column(db.Numeric(10, 2), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
+    pickup_lat = db.Column(db.Float)
+    pickup_lng = db.Column(db.Float)
 
     def public(self):
-        return dict(id=self.id, pickup=self.pickup, destination=self.destination, distance_km=str(self.distance_km), duration_min=self.duration_min, base=str(self.base), distance_fare=str(self.distance_fare), time_fare=str(self.time_fare), total=str(self.total), currency='INR', provider='simulator', expires_at=self.expires_at.isoformat() + 'Z')
+        return dict(id=self.id, pickup=self.pickup, destination=self.destination, pickup_lat=self.pickup_lat, pickup_lng=self.pickup_lng, distance_km=str(self.distance_km), duration_min=self.duration_min, base=str(self.base), distance_fare=str(self.distance_fare), time_fare=str(self.time_fare), total=str(self.total), currency='INR', provider='simulator', expires_at=self.expires_at.isoformat() + 'Z')
 
 
 class Ride(db.Model):
@@ -52,6 +54,8 @@ class Ride(db.Model):
     requested_at = db.Column(db.DateTime, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     completed_at = db.Column(db.DateTime)
+    round_no = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    radius_m = db.Column(db.Integer, nullable=False, default=500, server_default='500')
     __table_args__ = (db.CheckConstraint("status IN ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS','COMPLETED','CANCELLED','NO_DRIVER_FOUND')", name='valid_ride_state'),)
 
 
@@ -67,6 +71,37 @@ class Invitation(db.Model):
     ride_id = db.Column(db.String(36), db.ForeignKey('rides.id'), primary_key=True)
     driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     status = db.Column(db.String(16), nullable=False, default='PENDING')
+    round_no = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    expires_at = db.Column(db.DateTime)
+
+
+class DriverLocation(db.Model):
+    __tablename__ = 'driver_locations'
+    driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    accuracy_m = db.Column(db.Float, nullable=False)
+    recorded_at = db.Column(db.DateTime, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, index=True)
+    fresh = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class MatchRound(db.Model):
+    __tablename__ = 'ride_match_rounds'
+    ride_id = db.Column(db.String(36), db.ForeignKey('rides.id'), primary_key=True)
+    round_no = db.Column(db.Integer, primary_key=True)
+    radius_m = db.Column(db.Integer, nullable=False)
+    started_at = db.Column(db.DateTime, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    outcome = db.Column(db.String(24), nullable=False, default='SEARCHING')
+
+
+class OutboxEvent(db.Model):
+    __tablename__ = 'outbox_events'
+    id = db.Column(db.String(36), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, nullable=False)
+    delivered_at = db.Column(db.DateTime, index=True)
 
 
 class RevenueLedger(db.Model):

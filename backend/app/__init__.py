@@ -30,6 +30,11 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     app.config.setdefault('SIMULATOR_ENABLED', development and os.getenv('SIMULATOR_ENABLED', '1') == '1')
+    app.config.setdefault('LOCATION_STALE_SECONDS', 90)
+    app.config.setdefault('MATCH_ROUND_SECONDS', 30)
+    app.config.setdefault('MATCH_MAX_RADIUS_M', int(os.getenv('MATCH_MAX_RADIUS_M', '5000')))
+    if app.config['MATCH_MAX_RADIUS_M'] not in range(500, 10001, 500):
+        raise RuntimeError('MATCH_MAX_RADIUS_M must be a multiple of 500 between 500 and 10000')
     if not all(app.config.get(k) for k in ('SQLALCHEMY_DATABASE_URI', 'JWT_SECRET', 'USER_CODE_SECRET')):
         raise RuntimeError('DATABASE_URL, JWT_SECRET and USER_CODE_SECRET are required outside development')
     db.init_app(app)
@@ -37,6 +42,8 @@ def create_app(config=None):
     from .routes import api
     from . import ride_routes
     app.register_blueprint(api, url_prefix='/api/v1')
+    from .realtime import init_realtime
+    init_realtime(app)
 
     @app.errorhandler(404)
     def missing(_):

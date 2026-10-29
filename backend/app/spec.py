@@ -26,16 +26,25 @@ SPEC = {
     },
 }
 
-SPEC['info']['version'] = '0.2.0'
+SPEC['info']['version'] = '0.3.0'
 SPEC['info']['title'] = 'ridez development ride simulator API'
-SPEC['info']['description'] += ' Simulator uses sample rates and one 30-second invitation round. No GPS, geocoding, payments or expanding search yet.'
+SPEC['info']['description'] += ' Sample route fares; real GPS matching starts at 500 m and expands by 500 m every 30 seconds. Driver locations expire after 90 seconds. No live geocoding or payments. Socket.IO authenticates with auth.token and sends scoped workspace.changed invalidations; fetch /workspace on reconnect.'
 SPEC['paths'].update({
     '/workspace': {'get': operation('Read your rides, active trip, invitations, earnings or admin driver queue', protected=True)},
-    '/fares/quotes': {'post': operation('Create a five-minute simulated quote', ['pickup', 'destination'], protected=True, status='201')},
+    '/fares/quotes': {'post': operation('Create a five-minute simulated quote with pickup coordinates', ['pickup', 'destination', 'pickup_lat', 'pickup_lng'], protected=True, status='201')},
     '/rides': {'post': operation('Book a quote; quote ID is the idempotency key', ['quote_id'], protected=True, status='201')},
     '/driver/availability': {'post': operation('Change approved driver simulator availability', protected=True)},
 })
 SPEC['paths']['/driver/availability']['post']['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'type': 'object', 'required': ['available'], 'properties': {'available': {'type': 'boolean'}}}}}}
+location_schema = {'type': 'object', 'required': ['latitude','longitude','accuracy_m','recorded_at'], 'properties': {'latitude': {'type':'number','minimum':-90,'maximum':90}, 'longitude': {'type':'number','minimum':-180,'maximum':180}, 'accuracy_m': {'type':'number','minimum':0,'maximum':200}, 'recorded_at': {'type':'string','format':'date-time'}}}
+SPEC['paths']['/driver/location'] = {'put': operation('Update your own current location while available or on a trip', protected=True)}
+SPEC['paths']['/driver/location']['put']['requestBody'] = {'required':True,'content':{'application/json':{'schema':location_schema}}}
+availability_schema = SPEC['paths']['/driver/availability']['post']['requestBody']['content']['application/json']['schema']
+availability_schema['properties'].update(location_schema['properties'])
+availability_schema['description'] = 'All location fields are required when available=true. Only available=false is required to go offline.'
+quote_properties = SPEC['paths']['/fares/quotes']['post']['requestBody']['content']['application/json']['schema']['properties']
+quote_properties['pickup_lat'] = location_schema['properties']['latitude']
+quote_properties['pickup_lng'] = location_schema['properties']['longitude']
 for action in ['accept', 'reject', 'cancel', 'depart', 'arrive', 'start', 'complete']:
     route = '/rides/{ride_id}/' + action
     SPEC['paths'][route] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'post': operation(f'{action.capitalize()} a ride with permission and state checks', protected=True)}

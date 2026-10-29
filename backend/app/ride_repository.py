@@ -1,6 +1,9 @@
 from sqlalchemy import select, update, delete
+from datetime import timedelta
+from uuid import uuid4
+from flask import current_app
 from . import db
-from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger
+from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, DriverLocation, MatchRound, OutboxEvent
 
 
 def get(model, key):
@@ -16,6 +19,17 @@ def commit():
     db.session.commit()
 
 
+def notify(*user_ids):
+    from .location_service import utcnow
+    for user_id in set(user_ids) | {None}:
+        add(OutboxEvent(id=str(uuid4()), user_id=user_id, created_at=utcnow()))
+
+
+def notify_ride(ride):
+    ids = list(db.session.scalars(select(Invitation.driver_id).where(Invitation.ride_id == ride.id)))
+    notify(ride.rider_id, *ids, *([ride.driver_id] if ride.driver_id else []))
+
+
 def rollback():
     db.session.rollback()
 
@@ -29,8 +43,9 @@ def all_rides(user):
     return db.session.scalars(query.order_by(Ride.requested_at.desc()).limit(100)).all()
 
 
-def eligible_drivers():
-    return db.session.scalars(select(DriverPresence).join(User, User.id == DriverPresence.driver_id).where(DriverPresence.available.is_(True), User.status == 'active', ~DriverPresence.driver_id.in_(select(ActiveRide.user_id)))).all()
+def eligible_drivers(at):
+    cutoff = at - timedelta(seconds=current_app.config['LOCATION_STALE_SECONDS'])
+    return db.session.scalars(select(DriverPresence).join(User, User.id == DriverPresence.driver_id).join(DriverLocation, DriverLocation.driver_id == User.id).where(DriverPresence.available.is_(True), User.status == 'active', DriverLocation.fresh.is_(True), DriverLocation.recorded_at > cutoff, DriverLocation.updated_at > cutoff, ~DriverPresence.driver_id.in_(select(ActiveRide.user_id)))).all()
 
 
 def transition(ride_id, old, new, **values):
@@ -38,8 +53,9 @@ def transition(ride_id, old, new, **values):
 
 
 def assign(ride_id, driver_id, now):
-    valid_invitation = select(Invitation.ride_id).where(Invitation.driver_id == driver_id, Invitation.status == 'PENDING')
-    eligible = select(DriverPresence.driver_id).join(User, User.id == DriverPresence.driver_id).where(DriverPresence.driver_id == driver_id, DriverPresence.available.is_(True), User.status == 'active').exists()
+    cutoff = now - timedelta(seconds=current_app.config['LOCATION_STALE_SECONDS'])
+    valid_invitation = select(Invitation.ride_id).where(Invitation.driver_id == driver_id, Invitation.status == 'PENDING', Invitation.expires_at > now)
+    eligible = select(DriverPresence.driver_id).join(User, User.id == DriverPresence.driver_id).join(DriverLocation, DriverLocation.driver_id == User.id).where(DriverPresence.driver_id == driver_id, DriverPresence.available.is_(True), User.status == 'active', DriverLocation.fresh.is_(True), DriverLocation.recorded_at > cutoff, DriverLocation.updated_at > cutoff).exists()
     return db.session.execute(update(Ride).where(Ride.id == ride_id, Ride.status == 'SEARCHING', Ride.expires_at > now, Ride.id.in_(valid_invitation), eligible).values(status='ASSIGNED', driver_id=driver_id).execution_options(synchronize_session=False)).rowcount == 1
 
 
@@ -49,6 +65,15 @@ def release(ride_id):
 
 def close_invitations(ride_id, status='EXPIRED'):
     db.session.execute(update(Invitation).where(Invitation.ride_id == ride_id, Invitation.status == 'PENDING').values(status=status))
+
+
+def expire_round(ride, at):
+    """Claim one exact persisted deadline; competing worker/request can only win once."""
+    return db.session.execute(update(Ride).where(Ride.id == ride.id, Ride.status == 'SEARCHING', Ride.round_no == ride.round_no, Ride.expires_at == ride.expires_at, Ride.expires_at <= at).values(round_no=ride.round_no+1).execution_options(synchronize_session=False)).rowcount == 1
+
+
+def round_for(ride):
+    return get(MatchRound, (ride.id, ride.round_no))
 
 
 def expired_searches(now):

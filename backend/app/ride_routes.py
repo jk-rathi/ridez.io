@@ -34,6 +34,16 @@ def availability():
     return jsonify(service.availability(g.user, body()))
 
 
+@api.put('/driver/location')
+@authenticated('driver')
+def location():
+    from .location_service import update
+    from . import ride_repository as repo
+    result = update(g.user, body())
+    repo.commit()
+    return jsonify(location=result)
+
+
 @api.post('/rides/<ride_id>/accept')
 @authenticated('driver')
 def accept(ride_id):
