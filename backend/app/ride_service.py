@@ -7,7 +7,7 @@ from . import db
 from . import ride_repository as repo
 from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, AdminAudit
 from .services import ApiError
-from . import location_service, matching, route_provider, fare_service
+from . import location_service, matching, route_provider, fare_service, revenue_service
 import math
 
 
@@ -212,13 +212,13 @@ def move(user, ride_id, action):
             return public(ride, user)
         if ride.status != old:
             raise ApiError(f'Cannot {action} a trip in {ride.status.lower()} state', 409)
-        if not repo.transition(ride.id, old, new, **({'completed_at': now()} if action == 'complete' else {})):
+        completed_at=now() if action=='complete' else None
+        if not repo.transition(ride.id, old, new, **({'completed_at': completed_at} if action == 'complete' else {})):
             repo.rollback()
             raise ApiError('Ride changed. Refresh and retry', 409)
         if action == 'complete':
             quoted = repo.get(FareQuote, ride.quote_id)
-            driver_amount = money(quoted.total * Decimal('0.85'))
-            repo.add(RevenueLedger(ride_id=ride.id, driver_id=user.id, eligible_fare=quoted.total, driver_pct=Decimal('85.00'), company_pct=Decimal('15.00'), driver_amount=driver_amount, company_amount=quoted.total - driver_amount))
+            revenue_service.allocate(ride,quoted,user.id,completed_at)
             repo.release(ride.id)
             # End offline deliberately; driver chooses when to take another request.
     repo.notify_ride(ride)

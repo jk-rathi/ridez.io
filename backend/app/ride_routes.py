@@ -95,3 +95,17 @@ def fare_settings():
 def update_fare_settings():
     from .fare_service import save
     return jsonify(save(g.user,body()))
+
+
+@api.get('/admin/revenue-share')
+@authenticated('admin')
+def revenue_share():
+    from .revenue_service import settings
+    return jsonify(settings())
+
+
+@api.put('/admin/revenue-share')
+@authenticated('admin')
+def update_revenue_share():
+    from .revenue_service import save
+    return jsonify(save(g.user,body()))

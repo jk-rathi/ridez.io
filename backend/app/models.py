@@ -135,9 +135,28 @@ class RevenueLedger(db.Model):
     company_pct = db.Column(db.Numeric(5, 2), nullable=False)
     driver_amount = db.Column(db.Numeric(10, 2), nullable=False)
     company_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    share_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    created_at = db.Column(db.DateTime)
 
     def public(self):
-        return {key: str(getattr(self, key)) for key in ('eligible_fare', 'driver_pct', 'company_pct', 'driver_amount', 'company_amount')} | {'currency': 'INR', 'status': 'ALLOCATED', 'ride_id': self.ride_id}
+        return {key: str(getattr(self, key)) for key in ('eligible_fare', 'driver_pct', 'company_pct', 'driver_amount', 'company_amount')} | {'currency': 'INR', 'status': 'ALLOCATED', 'ride_id': self.ride_id, 'share_version':self.share_version,'created_at':self.created_at.isoformat()+'Z' if self.created_at else None}
+
+
+class RevenueShareSetting(db.Model):
+    __tablename__ = 'revenue_share_settings'
+    version = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    driver_pct = db.Column(db.Numeric(5, 2), nullable=False)
+    company_pct = db.Column(db.Numeric(5, 2), nullable=False)
+    previous_driver_pct = db.Column(db.Numeric(5, 2), nullable=False)
+    previous_company_pct = db.Column(db.Numeric(5, 2), nullable=False)
+    effective_from = db.Column(db.DateTime, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    reason = db.Column(db.String(300), nullable=False)
+    __table_args__ = (db.CheckConstraint('driver_pct >= 0 AND driver_pct <= 100 AND company_pct >= 0 AND company_pct <= 100 AND driver_pct + company_pct = 100',name='valid_revenue_split'),)
+
+    def public(self):
+        return dict(version=self.version,driver_pct=str(self.driver_pct),company_pct=str(self.company_pct),previous_driver_pct=str(self.previous_driver_pct),previous_company_pct=str(self.previous_company_pct),effective_from=self.effective_from.isoformat()+'Z',created_at=self.created_at.isoformat()+'Z',updated_by=self.updated_by,reason=self.reason)
 
 
 class AdminAudit(db.Model):

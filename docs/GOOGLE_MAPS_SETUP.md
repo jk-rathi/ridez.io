@@ -1,6 +1,6 @@
 # Google Maps and live routes — Windows setup
 
-Use two separate keys: a browser-restricted key for Maps JavaScript API, and a server-only key restricted to Routes API. This release uses map clicks or explicit coordinates; Places autocomplete and address geocoding are not included and do not need to be enabled.
+Use two separate keys: a browser-restricted key for Maps JavaScript API and Places API (New), and a server-only key restricted to Routes API. Address autocomplete now uses Places API (New); map clicks and explicit coordinates remain available. See [address search and revenue setup](ADDRESS_SEARCH_AND_REVENUE.md) if your existing map/route setup already works.
 
 ## Update the application
 
@@ -57,7 +57,7 @@ Set your browser key:
 VITE_GOOGLE_MAPS_BROWSER_KEY=your_browser_key_here
 ```
 
-This key is public in the browser by design: restrict it to Maps JavaScript API and your allowed website referrers, including `http://localhost:5173/*` and `http://127.0.0.1:5173/*`. It must be different from the server key. The map uses Advanced Markers with Google's `DEMO_MAP_ID` for development; optionally set `VITE_GOOGLE_MAP_ID` to your own map ID before production. Do not use an unrestricted browser key.
+This key is public in the browser by design: restrict it to **Maps JavaScript API and Places API (New)** and your allowed website referrers, including `http://localhost:5173/*` and `http://127.0.0.1:5173/*`. Enable both APIs in the project owning that browser key. It must be different from the server key. The map uses Advanced Markers with Google's `DEMO_MAP_ID` for development; optionally set `VITE_GOOGLE_MAP_ID` to your own map ID before production. Do not use an unrestricted browser key.
 
 Start Vite after saving the file:
 
@@ -70,10 +70,10 @@ Restart Vite after any frontend environment changes. Open `http://localhost:5173
 ## Test your Google project
 
 1. Sign in as rider. The banner should say **Google routes**.
-2. On the map choose **Pickup**, then click a road location. Choose **Destination**, then click a different reachable location. **Use my location** can fill pickup instead. Labels can be edited, but do not change the chosen coordinates.
+2. Type in the pickup and destination address inputs, then select Google suggestions to populate their coordinates and map markers. Alternatively, choose **Pickup**/**Destination** and click the map. **Use my location** can fill pickup instead. Editing a searched address clears its previous coordinates, so select again before requesting a new quote.
 3. Select **Get fare estimate**. Check the route line, road distance, estimated duration, and itemized fare. Google travel time is an estimate, not a guaranteed arrival time. A route across disconnected areas may correctly return no driving route.
 4. Use a nearby approved available driver to confirm a ride and test the existing lifecycle. The quoted fare remains fixed even if settings change later. Fresh route geometry remains in memory for current-session display; after re-login/reload the active-trip map shows endpoint markers without fetching another paid route automatically.
-5. Sign in as admin and open **Settings**. Configure base/per-km/per-minute/minimum rates, timezone, surge cap, traffic/demand rules, and circular zone schedules. Enter a reason and save. Review the version history. These settings apply only to new quotes.
+5. Sign in as admin and open **Fare settings**. Configure base/per-km/per-minute/minimum rates, timezone, surge cap, traffic/demand rules, and circular zone schedules. Enter a reason and save. Review the version history. These settings apply only to new quotes. The separate **Revenue share** page controls effective-dated driver/company allocation at completion.
 
 Initial rates are development defaults, not approved commercial fares. Fare calculation rounds distance and prorated time components to two decimals, applies a minimum adjustment, then applies the **highest eligible** surge multiplier capped at the configured maximum. Components sum to the total. Traffic surge compares Google duration against static duration; missing traffic data never triggers traffic surge. Demand uses open searching rides and fresh available drivers within 1 km; at least the configured minimum requests must exist. A zero-driver denominator is treated as one. Overnight schedules belong to the weekday on which the window starts; equal start/end means all day. Global surge can be paused.
 
