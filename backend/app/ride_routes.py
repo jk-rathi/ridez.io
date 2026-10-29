@@ -109,3 +109,18 @@ def revenue_share():
 def update_revenue_share():
     from .revenue_service import save
     return jsonify(save(g.user,body()))
+
+
+@api.get('/admin/audit')
+@authenticated('admin')
+def admin_audit():
+    from flask import request
+    from .admin_service import audit
+    return jsonify(audit(request.args))
+
+
+@api.get('/admin/audit/<category>/<identifier>')
+@authenticated('admin')
+def admin_audit_detail(category,identifier):
+    from .admin_service import audit_detail
+    return jsonify(audit_detail(category,identifier))

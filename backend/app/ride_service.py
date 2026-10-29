@@ -68,7 +68,7 @@ def public(ride, user, invitation=False):
     driver = repo.get(User, ride.driver_id) if ride.driver_id else None
     rider = repo.get(User, ride.rider_id)
     result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
-    if not invitation:
+    if not invitation and user.role in ('driver','admin'):
         allocation = repo.get(RevenueLedger, ride.id)
         result['settlement'] = allocation.public() if allocation else None
     return result
@@ -146,6 +146,8 @@ def accept(user, ride_id):
         raise ApiError('Invitation not found', 404)
     if ride.driver_id == user.id and ride.status in ('ASSIGNED', 'ARRIVING', 'WAITING', 'IN_PROGRESS', 'COMPLETED'):
         return public(ride, user)
+    if repo.get(ActiveRide, user.id):
+        raise ApiError('You already have an active trip', 409)
     if user.status != 'active' or not presence or not presence.available:
         raise ApiError('You must be approved and available to accept', 403)
     from .models import DriverLocation
@@ -153,8 +155,6 @@ def accept(user, ride_id):
         raise ApiError('Refresh your location before accepting', 409)
     if invitation.status != 'PENDING' or ride.status != 'SEARCHING' or ride.expires_at <= now():
         raise ApiError('This invitation is no longer available', 409)
-    if repo.get(ActiveRide, user.id):
-        raise ApiError('You already have an active trip', 409)
     try:
         if not repo.assign(ride.id, user.id, now()):
             repo.rollback()
@@ -239,7 +239,9 @@ def snapshot(user):
         entries = repo.ledger(user.id)
         result.update(available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and result['location']['fresh'] and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
     if user.role == 'admin':
+        from .admin_service import metrics
         from .models import DriverLocation
+        result['metrics']=metrics()
         result['drivers'] = [driver.public() | {'location': location_service.public(repo.get(DriverLocation, driver.id))} for driver in repo.drivers()]
     return result
 

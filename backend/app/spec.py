@@ -26,7 +26,7 @@ SPEC = {
     },
 }
 
-SPEC['info']['version'] = '0.5.0'
+SPEC['info']['version'] = '0.6.0'
 SPEC['info']['title'] = 'ridez routes, fares and matching API'
 SPEC['info']['description'] += ' Sample route fares; real GPS matching starts at 500 m and expands by 500 m every 30 seconds. Driver locations expire after 90 seconds. No live geocoding or payments. Socket.IO authenticates with auth.token and sends scoped workspace.changed invalidations; fetch /workspace on reconnect.'
 SPEC['paths'].update({
@@ -52,8 +52,12 @@ SPEC['paths']['/admin/fare-settings'] = {'get': operation('Read versioned fare p
 SPEC['paths']['/admin/fare-settings']['put']['requestBody'] = {'required':True,'content':{'application/json':{'schema':{'type':'object','required':['version','reason','policy'],'properties':{'version':{'type':'integer','minimum':0},'reason':{'type':'string','minLength':1,'maxLength':300},'policy':{'type':'object','description':'Complete policy returned by GET. Includes INR rates, minimum fare, timezone, capped surge, traffic/demand thresholds and scheduled circular zones.'}}}}}}
 SPEC['paths']['/admin/revenue-share'] = {'get':operation('Read current and scheduled revenue shares plus immutable audit history (admin)',protected=True), 'put':operation('Save an immediate or future revenue split; percentages must total 100 (admin)',protected=True)}
 SPEC['paths']['/admin/revenue-share']['put']['requestBody'] = {'required':True,'content':{'application/json':{'schema':{'type':'object','required':['version','driver_pct','company_pct','reason'],'properties':{'version':{'type':'integer','minimum':0},'driver_pct':{'type':'string','example':'85.00'},'company_pct':{'type':'string','example':'15.00'},'reason':{'type':'string','minLength':1,'maxLength':300},'effective_from':{'type':'string','format':'date-time','nullable':True,'description':'Null for immediately; otherwise future ISO timestamp with timezone, within one year.'}}}}}}
+SPEC['paths']['/admin/audit'] = {'get':operation('Search paginated driver/fare/revenue change history (admin only)',protected=True)}
+SPEC['paths']['/admin/audit']['get']['parameters'] = [{'name':'page','in':'query','schema':{'type':'integer','minimum':1,'default':1}},{'name':'category','in':'query','schema':{'type':'string','enum':['driver','fares','revenue']}},{'name':'q','in':'query','schema':{'type':'string','maxLength':100}}]
+SPEC['paths']['/admin/audit/{category}/{identifier}'] = {'parameters':[{'name':'category','in':'path','required':True,'schema':{'type':'string','enum':['driver','fares','revenue']}},{'name':'identifier','in':'path','required':True,'schema':{'type':'string'}}], 'get':operation('Read before/after values for an admin change (admin only)',protected=True)}
 for action in ['accept', 'reject', 'cancel', 'depart', 'arrive', 'start', 'complete']:
     route = '/rides/{ride_id}/' + action
     SPEC['paths'][route] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'post': operation(f'{action.capitalize()} a ride with permission and state checks', protected=True)}
 SPEC['paths']['/rides/{ride_id}'] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'get': operation('Get a ride you participate in (or admin)', protected=True)}
+SPEC['paths']['/rides/{ride_id}']['get']['description']='Riders receive their fare and trip details only. Settlement amounts and percentages are returned only to the assigned driver or an admin. Rider workspace/history/booking responses follow the same filtering.'
 SPEC['paths']['/admin/drivers/{driver_id}/approve'] = {'parameters': [{'name': 'driver_id', 'in': 'path', 'required': True, 'schema': {'type': 'integer'}}], 'post': operation('Approve pending driver and record an audit reason', ['reason'], protected=True)}

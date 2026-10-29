@@ -126,6 +126,15 @@ def test_simulator_disabled(client, app, actors):
     assert post(client,actors,'rider','/rides',quote_id='anything').status_code == 503
 
 
+def test_second_ride_acceptance_reports_conflict_after_driver_becomes_busy(client,actors):
+    prepare(client,actors)
+    first=book(client,actors)
+    second=book(client,actors,'other')
+    assert post(client,actors,'driver',f"/rides/{first['id']}/accept").status_code==200
+    response=post(client,actors,'driver',f"/rides/{second['id']}/accept")
+    assert response.status_code==409 and 'active trip' in response.json['error']
+
+
 @pytest.mark.parametrize('same_driver',[False,True])
 def test_concurrent_acceptance_has_one_winner(tmp_path, same_driver):
     concurrent_app=create_app({'ROUTE_PROVIDER':'simulator','SIMULATOR_ENABLED':True,'TESTING':True,'SQLALCHEMY_DATABASE_URI':f'sqlite:///{tmp_path / "race.db"}', 'JWT_SECRET':'concurrent-test-jwt-key-1234567890','USER_CODE_SECRET':'concurrent-test-code-key-1234567890'})
