@@ -4,11 +4,13 @@ from pathlib import Path
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from dotenv import load_dotenv
 
 db = SQLAlchemy()
 
 
 def create_app(config=None):
+    load_dotenv(Path(__file__).resolve().parents[1] / '.env', override=False)
     app = Flask(__name__)
     development = os.getenv('APP_ENV', 'development') == 'development'
     jwt_secret = os.getenv('JWT_SECRET')
@@ -30,6 +32,10 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     app.config.setdefault('SIMULATOR_ENABLED', development and os.getenv('SIMULATOR_ENABLED', '1') == '1')
+    app.config.setdefault('ROUTE_PROVIDER', os.getenv('ROUTE_PROVIDER', 'simulator' if development else 'google'))
+    app.config.setdefault('GOOGLE_MAPS_SERVER_KEY', os.getenv('GOOGLE_MAPS_SERVER_KEY', ''))
+    if app.config['ROUTE_PROVIDER'] not in ('google', 'simulator'):
+        raise RuntimeError('ROUTE_PROVIDER must be google or simulator')
     app.config.setdefault('LOCATION_STALE_SECONDS', 90)
     app.config.setdefault('MATCH_ROUND_SECONDS', 30)
     app.config.setdefault('MATCH_MAX_RADIUS_M', int(os.getenv('MATCH_MAX_RADIUS_M', '5000')))

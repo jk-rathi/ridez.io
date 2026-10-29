@@ -87,7 +87,7 @@ def me():
 def driver():
     from .ride_service import snapshot
     data = snapshot(g.user)
-    return jsonify(approval=g.user.status, trips=sum(ride['status'] == 'COMPLETED' for ride in data['rides']), allocated_earnings=data['allocated_earnings'], availability_enabled=g.user.status == 'active' and data['simulator'], available=data['available'])
+    return jsonify(approval=g.user.status, trips=sum(ride['status'] == 'COMPLETED' for ride in data['rides']), allocated_earnings=data['allocated_earnings'], availability_enabled=g.user.status == 'active' and data['booking_enabled'], available=data['available'])
 
 
 @api.get('/admin/overview')

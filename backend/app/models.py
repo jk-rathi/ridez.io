@@ -39,9 +39,31 @@ class FareQuote(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     pickup_lat = db.Column(db.Float)
     pickup_lng = db.Column(db.Float)
+    destination_lat = db.Column(db.Float)
+    destination_lng = db.Column(db.Float)
+    provider = db.Column(db.String(16), nullable=False, default='simulator', server_default='simulator')
+    distance_m = db.Column(db.Integer)
+    duration_seconds = db.Column(db.Integer)
+    baseline_seconds = db.Column(db.Integer)
+    subtotal = db.Column(db.Numeric(10, 2))
+    minimum_adjustment = db.Column(db.Numeric(10, 2))
+    surge_multiplier = db.Column(db.Numeric(5, 2), nullable=False, default=1, server_default='1')
+    surge_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0, server_default='0')
+    surge_reason = db.Column(db.String(500), nullable=False, default='No surge', server_default='No surge')
+    fare_rule_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    rate_snapshot = db.Column(db.Text)
 
     def public(self):
-        return dict(id=self.id, pickup=self.pickup, destination=self.destination, pickup_lat=self.pickup_lat, pickup_lng=self.pickup_lng, distance_km=str(self.distance_km), duration_min=self.duration_min, base=str(self.base), distance_fare=str(self.distance_fare), time_fare=str(self.time_fare), total=str(self.total), currency='INR', provider='simulator', expires_at=self.expires_at.isoformat() + 'Z')
+        return dict(id=self.id, pickup=self.pickup, destination=self.destination, pickup_lat=self.pickup_lat, pickup_lng=self.pickup_lng, destination_lat=self.destination_lat, destination_lng=self.destination_lng, distance_km=str(self.distance_km), distance_m=self.distance_m, duration_min=self.duration_min, duration_seconds=self.duration_seconds, traffic_available=self.baseline_seconds is not None, base=str(self.base), distance_fare=str(self.distance_fare), time_fare=str(self.time_fare), minimum_adjustment=str(self.minimum_adjustment or 0), subtotal=str(self.subtotal or self.total), surge_multiplier=str(self.surge_multiplier), surge_amount=str(self.surge_amount), surge_reason=self.surge_reason, fare_rule_version=self.fare_rule_version, total=str(self.total), currency='INR', provider=self.provider, expires_at=self.expires_at.isoformat() + 'Z')
+
+
+class FarePolicy(db.Model):
+    __tablename__ = 'fare_policies'
+    version = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    settings = db.Column(db.Text, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    reason = db.Column(db.String(300), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False)
 
 
 class Ride(db.Model):

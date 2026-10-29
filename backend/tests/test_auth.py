@@ -8,7 +8,7 @@ from app.services import register
 
 @pytest.fixture()
 def app():
-    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'JWT_SECRET': 'test-jwt-secret-for-tests-only-123456', 'USER_CODE_SECRET': 'test-code-secret-for-tests-only-123456'})
+    app = create_app({'ROUTE_PROVIDER':'simulator','SIMULATOR_ENABLED':True,'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'JWT_SECRET': 'test-jwt-secret-for-tests-only-123456', 'USER_CODE_SECRET': 'test-code-secret-for-tests-only-123456'})
     with app.app_context():
         db.create_all()
     yield app

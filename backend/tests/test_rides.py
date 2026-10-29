@@ -128,7 +128,7 @@ def test_simulator_disabled(client, app, actors):
 
 @pytest.mark.parametrize('same_driver',[False,True])
 def test_concurrent_acceptance_has_one_winner(tmp_path, same_driver):
-    concurrent_app=create_app({'TESTING':True,'SQLALCHEMY_DATABASE_URI':f'sqlite:///{tmp_path / "race.db"}', 'JWT_SECRET':'concurrent-test-jwt-key-1234567890','USER_CODE_SECRET':'concurrent-test-code-key-1234567890'})
+    concurrent_app=create_app({'ROUTE_PROVIDER':'simulator','SIMULATOR_ENABLED':True,'TESTING':True,'SQLALCHEMY_DATABASE_URI':f'sqlite:///{tmp_path / "race.db"}', 'JWT_SECRET':'concurrent-test-jwt-key-1234567890','USER_CODE_SECRET':'concurrent-test-code-key-1234567890'})
     with concurrent_app.app_context():
         db.create_all()
     people=actors.__wrapped__(concurrent_app)

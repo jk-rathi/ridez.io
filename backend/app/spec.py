@@ -26,8 +26,8 @@ SPEC = {
     },
 }
 
-SPEC['info']['version'] = '0.3.0'
-SPEC['info']['title'] = 'ridez development ride simulator API'
+SPEC['info']['version'] = '0.4.0'
+SPEC['info']['title'] = 'ridez routes, fares and matching API'
 SPEC['info']['description'] += ' Sample route fares; real GPS matching starts at 500 m and expands by 500 m every 30 seconds. Driver locations expire after 90 seconds. No live geocoding or payments. Socket.IO authenticates with auth.token and sends scoped workspace.changed invalidations; fetch /workspace on reconnect.'
 SPEC['paths'].update({
     '/workspace': {'get': operation('Read your rides, active trip, invitations, earnings or admin driver queue', protected=True)},
@@ -45,6 +45,11 @@ availability_schema['description'] = 'All location fields are required when avai
 quote_properties = SPEC['paths']['/fares/quotes']['post']['requestBody']['content']['application/json']['schema']['properties']
 quote_properties['pickup_lat'] = location_schema['properties']['latitude']
 quote_properties['pickup_lng'] = location_schema['properties']['longitude']
+quote_properties['destination_lat'] = location_schema['properties']['latitude']
+quote_properties['destination_lng'] = location_schema['properties']['longitude']
+SPEC['paths']['/fares/quotes']['post']['summary'] = 'Create a five-minute route/fare snapshot; destination coordinates required in Google mode'
+SPEC['paths']['/admin/fare-settings'] = {'get': operation('Read versioned fare policy and audit history (admin)',protected=True), 'put':operation('Save a validated new fare policy version (admin)',protected=True)}
+SPEC['paths']['/admin/fare-settings']['put']['requestBody'] = {'required':True,'content':{'application/json':{'schema':{'type':'object','required':['version','reason','policy'],'properties':{'version':{'type':'integer','minimum':0},'reason':{'type':'string','minLength':1,'maxLength':300},'policy':{'type':'object','description':'Complete policy returned by GET. Includes INR rates, minimum fare, timezone, capped surge, traffic/demand thresholds and scheduled circular zones.'}}}}}}
 for action in ['accept', 'reject', 'cancel', 'depart', 'arrive', 'start', 'complete']:
     route = '/rides/{ride_id}/' + action
     SPEC['paths'][route] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'post': operation(f'{action.capitalize()} a ride with permission and state checks', protected=True)}

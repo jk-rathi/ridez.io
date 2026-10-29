@@ -156,7 +156,7 @@ def test_outbox_retry_preserves_undelivered_event(client,app,actors):
 
 
 def test_new_app_recovers_persisted_rounds(tmp_path):
-    config={'TESTING':True,'SQLALCHEMY_DATABASE_URI':f'sqlite:///{tmp_path / "restart.db"}', 'JWT_SECRET':'restart-test-only-secret-key-123456', 'USER_CODE_SECRET':'restart-code-only-secret-key-123456', 'MATCH_MAX_RADIUS_M':1500}
+    config={'ROUTE_PROVIDER':'simulator','SIMULATOR_ENABLED':True,'TESTING':True,'SQLALCHEMY_DATABASE_URI':f'sqlite:///{tmp_path / "restart.db"}', 'JWT_SECRET':'restart-test-only-secret-key-123456', 'USER_CODE_SECRET':'restart-code-only-secret-key-123456', 'MATCH_MAX_RADIUS_M':1500}
     original=create_app(config)
     with original.app_context():
         db.create_all()

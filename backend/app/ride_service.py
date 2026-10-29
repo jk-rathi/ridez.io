@@ -1,4 +1,3 @@
-import hashlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
@@ -8,7 +7,8 @@ from . import db
 from . import ride_repository as repo
 from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, AdminAudit
 from .services import ApiError
-from . import location_service, matching
+from . import location_service, matching, route_provider, fare_service
+import math
 
 
 def now():
@@ -20,7 +20,7 @@ def money(value):
 
 
 def simulator():
-    if not current_app.config['SIMULATOR_ENABLED']:
+    if current_app.config['ROUTE_PROVIDER'] == 'simulator' and not current_app.config['SIMULATOR_ENABLED']:
         raise ApiError('Development ride simulator is disabled', 503)
 
 
@@ -38,14 +38,17 @@ def quote(user, data):
     longitude = location_service.coordinate(data.get('pickup_lng'), 'Pickup longitude', 180)
     if pickup.casefold() == destination.casefold():
         raise ApiError('Pickup and destination must be different')
-    # Deterministic fixture, not geocoding, actual road distance, or commercial pricing.
-    seed = int(hashlib.sha256(f'{pickup.casefold()}|{destination.casefold()}'.encode()).hexdigest()[:8], 16)
-    distance = money(Decimal(200 + seed % 1800) / 100)
-    duration = max(5, int(distance * 3))
-    base, distance_fare, time_fare = money(40), money(distance * 12), money(Decimal(duration) * 2)
-    result = repo.add(FareQuote(id=str(uuid4()), rider_id=user.id, pickup=pickup, destination=destination, pickup_lat=latitude, pickup_lng=longitude, distance_km=distance, duration_min=duration, base=base, distance_fare=distance_fare, time_fare=time_fare, total=base + distance_fare + time_fare, expires_at=now() + timedelta(minutes=5)))
+    destination_point=None
+    if data.get('destination_lat') is not None or data.get('destination_lng') is not None:
+        destination_point=(location_service.coordinate(data.get('destination_lat'),'Destination latitude',90),location_service.coordinate(data.get('destination_lng'),'Destination longitude',180))
+    expire()
+    route=route_provider.compute((latitude,longitude),destination_point,(pickup,destination))
+    fare=fare_service.calculate(route,(latitude,longitude))
+    result=repo.add(FareQuote(id=str(uuid4()),rider_id=user.id,pickup=pickup,destination=destination,pickup_lat=latitude,pickup_lng=longitude,destination_lat=destination_point[0] if destination_point else None,destination_lng=destination_point[1] if destination_point else None,provider=route['provider'],distance_km=money(Decimal(route['distance_m'])/1000),distance_m=route['distance_m'],duration_min=math.ceil(route['duration_seconds']/60),duration_seconds=route['duration_seconds'],baseline_seconds=route['baseline_seconds'],expires_at=now()+timedelta(minutes=5),**fare))
     repo.commit()
-    return result.public()
+    # Route geometry is returned for immediate display, not retained as raw provider data.
+    return result.public() | {'polyline':route['polyline']}
+
 
 
 def expire():
@@ -85,6 +88,8 @@ def book(user, data):
         return public(existing, user)
     if quoted.expires_at <= now():
         raise ApiError('Quote expired. Request a new estimate', 409)
+    if quoted.provider != current_app.config['ROUTE_PROVIDER']:
+        raise ApiError('Route mode changed. Get a new quote before booking',409)
     if quoted.pickup_lat is None:
         raise ApiError('Get a new quote with pickup coordinates', 409)
     if repo.get(ActiveRide, user.id):
@@ -226,7 +231,7 @@ def snapshot(user):
     expire()
     rides = repo.all_rides(user)
     active = repo.get(ActiveRide, user.id)
-    result = {'rides': [public(ride, user) for ride in rides], 'active_ride': public(repo.get(Ride, active.ride_id), user) if active else None, 'simulator': current_app.config['SIMULATOR_ENABLED'], 'user': user.public()}
+    result = {'rides': [public(ride, user) for ride in rides], 'active_ride': public(repo.get(Ride, active.ride_id), user) if active else None, 'simulator': current_app.config['ROUTE_PROVIDER'] == 'simulator', 'route_provider':current_app.config['ROUTE_PROVIDER'], 'booking_enabled':current_app.config['ROUTE_PROVIDER'] == 'google' or current_app.config['SIMULATOR_ENABLED'], 'user': user.public()}
     if user.role == 'driver':
         from .models import DriverLocation
         presence = repo.get(DriverPresence, user.id)
