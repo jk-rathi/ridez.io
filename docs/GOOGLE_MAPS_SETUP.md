@@ -81,6 +81,25 @@ No taxes, tips, discounts, cancellation fees, or gateway fees are added in this 
 
 ## Troubleshooting
 
+If a standalone Routes API request succeeds but the application still fails, run the application diagnostic from `backend`:
+
+```powershell
+.\.venv312\Scripts\python.exe -m flask --app run check-routing
+# Makes one potentially billable request with the exact application's fields/options:
+.\.venv312\Scripts\python.exe -m flask --app run check-routing --probe
+```
+
+It reports the backend folder, selected provider, whether a key is configured, whether it matches `backend/.env`, and the exact provider result. It never prints the key. A mismatch indicates a process environment override or a different configuration file. Google denials expose only recognized reason codes; raw messages, project metadata, keys and IP addresses are not echoed.
+
+If the application probe succeeds but the website still fails, check that the frontend is connected to the backend you just restarted:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:5000/api/v1/health |
+    Select-Object routing_diagnostics_version, route_provider
+```
+
+The updated backend reports `routing_diagnostics_version: 1`. A missing field means an older server is responding on that port. Also check `API_PROXY_TARGET` in the frontend terminal/environment files; its default should point to `http://127.0.0.1:5000`. Restart Vite after changing its process environment. Do not share either environment file or raw keys when reporting diagnostic results.
+
 - **Map access denied:** check Maps JavaScript API, browser-key referrers, project billing and quotas. Changes can take time to propagate.
 - **Route access denied:** check Routes API, the server key's API/IP restrictions, and billing. IP restrictions must match the backend's actual public outbound IP, not `127.0.0.1` or a private LAN address.
 - **Quota reached:** inspect Google API quota/usage; requests may be billable. Budgets send alerts and do not impose an automatic spending cap. Set conservative API quotas where supported.

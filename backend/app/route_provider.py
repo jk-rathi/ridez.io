@@ -7,6 +7,21 @@ from flask import current_app
 from .services import ApiError
 
 
+def denial_reason(response):
+    """Expose only documented reason codes, never vendor messages or metadata."""
+    allowed={'API_KEY_INVALID','API_KEY_EXPIRED','API_KEY_IP_ADDRESS_BLOCKED','API_KEY_HTTP_REFERRER_BLOCKED','API_KEY_SERVICE_BLOCKED','API_KEY_ANDROID_APP_BLOCKED','API_KEY_IOS_APP_BLOCKED','SERVICE_DISABLED','BILLING_DISABLED','CONSUMER_INVALID','PROJECT_INVALID','ACCESS_TOKEN_EXPIRED','PERMISSION_DENIED','UNAUTHENTICATED'}
+    try:
+        error=response.json().get('error',{})
+        for detail in error.get('details',[]):
+            reason=detail.get('reason')
+            if isinstance(reason,str) and reason in allowed:
+                return reason
+        status=error.get('status')
+        return status if isinstance(status,str) and status in allowed else None
+    except (ValueError,TypeError,AttributeError):
+        return None
+
+
 def seconds(value):
     if not isinstance(value, str) or not re.fullmatch(r'\d+(?:\.\d{1,9})?s', value):
         raise ValueError('Invalid duration')
@@ -46,7 +61,9 @@ def compute(pickup, destination, labels):
     if response.status_code == 429:
         raise ApiError('Google routing quota was reached. Try again later or review the project quota', 503)
     if response.status_code in (401,403):
-        raise ApiError('Google routing access was denied. Check the server key, Routes API restrictions and billing', 502)
+        reason=denial_reason(response)
+        suffix=f' Google reason: {reason}.' if reason else ''
+        raise ApiError('Google routing access was denied. Check the server key, Routes API restrictions and billing.'+suffix, 502)
     if response.status_code != 200:
         raise ApiError('Google could not calculate this route. Check the locations and try again', 502)
     try:

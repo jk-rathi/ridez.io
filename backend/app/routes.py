@@ -63,7 +63,7 @@ def limit_auth():
 @api.get('/health')
 def health():
     running = monotonic() - current_app.extensions.get('matching_last_tick', float('-inf')) < 10
-    return jsonify(status='ok', stage='location-matching', matching_worker=running, simulator=current_app.config['SIMULATOR_ENABLED'], storage='sqlite-development' if current_app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite') else 'sql-server')
+    return jsonify(status='ok', stage='location-matching', routing_diagnostics_version=1, route_provider=current_app.config['ROUTE_PROVIDER'], matching_worker=running, simulator=current_app.config['SIMULATOR_ENABLED'], storage='sqlite-development' if current_app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite') else 'sql-server')
 
 
 @api.post('/auth/register')

@@ -67,6 +67,29 @@ def create_app(config=None):
         db.create_all()
 
     import click
+    @app.cli.command('check-routing')
+    @click.option('--probe',is_flag=True,help='Make one potentially billable request using the exact application route provider.')
+    def check_routing(probe):
+        """Show safe local configuration diagnostics without displaying a key."""
+        from dotenv import dotenv_values
+        from .route_provider import compute
+        from .services import ApiError
+        env_path=Path(__file__).resolve().parents[1] / '.env'
+        file_key=dotenv_values(env_path).get('GOOGLE_MAPS_SERVER_KEY') if env_path.exists() else None
+        active_key=app.config['GOOGLE_MAPS_SERVER_KEY']
+        click.echo(f'Backend folder: {env_path.parent}')
+        click.echo(f'Route provider: {app.config["ROUTE_PROVIDER"]}')
+        click.echo(f'Server key configured: {bool(active_key)}')
+        click.echo(f'Server key matches backend/.env: {bool(active_key and file_key and active_key==file_key)}')
+        if not probe:
+            click.echo('No Google request made. Add --probe to test the exact application request.')
+            return
+        try:
+            route=compute((19.076,72.8777),(19.086,72.8877),('Diagnostic pickup','Diagnostic destination'))
+        except ApiError as error:
+            raise click.ClickException(f'Application route probe failed ({error.status}): {error.message}')
+        click.echo(f'Application route probe succeeded: provider={route["provider"]}, distance_m={route["distance_m"]}, duration_seconds={route["duration_seconds"]}')
+
     @app.cli.command('create-admin')
     @click.option('--mobile', prompt=True)
     @click.option('--name', prompt=True)

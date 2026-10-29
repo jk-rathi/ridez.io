@@ -186,3 +186,34 @@ def test_quote_request_rate_limit(client,app,actors):
     for _ in range(10):
         assert post(client,actors,'rider','/fares/quotes',pickup='A',destination='B',pickup_lat=19,pickup_lng=72).status_code==201
     assert post(client,actors,'rider','/fares/quotes').status_code==429
+
+
+def test_denial_reason_is_useful_without_exposing_metadata(client,app,actors):
+    response=fixture_response(403)
+    response.json.return_value={'error':{'message':'private key test-server-key-not-real and IP address','status':'PERMISSION_DENIED','details':[{'reason':'API_KEY_IP_ADDRESS_BLOCKED','metadata':{'private':'do-not-expose'}}]}}
+    with patch('app.route_provider.requests.post',return_value=response):
+        result=google_quote(client,app,actors)
+    assert result.status_code==502 and 'API_KEY_IP_ADDRESS_BLOCKED' in result.json['error']
+    assert 'test-server-key-not-real' not in result.json['error']
+    assert 'do-not-expose' not in result.json['error']
+
+
+def test_unknown_google_reason_is_not_echoed(client,app,actors):
+    response=fixture_response(403)
+    response.json.return_value={'error':{'details':[{'reason':'private-key-or-unknown-content'}]}}
+    with patch('app.route_provider.requests.post',return_value=response):
+        result=google_quote(client,app,actors)
+    assert 'private-key-or-unknown-content' not in result.json['error']
+
+
+def test_routing_diagnostic_uses_exact_provider_without_printing_key(app):
+    app.config.update(ROUTE_PROVIDER='google',GOOGLE_MAPS_SERVER_KEY='private-test-cli-key')
+    with patch('app.route_provider.requests.post',return_value=fixture_response()) as request:
+        result=app.test_cli_runner().invoke(args=['check-routing','--probe'])
+    assert result.exit_code==0 and 'Application route probe succeeded' in result.output
+    assert 'private-test-cli-key' not in result.output
+    assert request.call_args.kwargs['headers']['X-Goog-FieldMask'].endswith('routes.polyline.encodedPolyline')
+    with patch('app.route_provider.requests.post') as request:
+        result=app.test_cli_runner().invoke(args=['check-routing'])
+    assert result.exit_code==0 and 'No Google request made' in result.output
+    request.assert_not_called()
