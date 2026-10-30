@@ -157,3 +157,5 @@ The embedded map is a road-route view, not Google’s voice-guided navigation ap
 After acceptance, rider screens put driver name, car number, model/colour, confirmed fare, pickup/destination and the pre-start OTP in a prominent card. Driver screens emphasize rider name, assigned car, fare and the next trip action. Essential details precede the map on mobile; detailed fare calculations are expandable. No ratings, driver photos, pickup ETAs or vehicle details are invented.
 
 Record actual car details under **Admin → Drivers → Vehicle details** before the next booking. Each accepted ride snapshots the car number/model/colour. The admin cannot change the vehicle during an active trip, and later updates do not rewrite completed trips. Existing drivers/rides without recorded details show an explicit missing-information message. This update requires `flask --app run db upgrade` locally; Render applies migrations on startup. There are no new dependencies. See [vehicle and pickup details](docs/VEHICLE_DETAILS.md).
+
+Mock QR payment testing: see [TEST_PAYMENTS.md](TEST_PAYMENTS.md) for Render setup and the scan/simulate flow.

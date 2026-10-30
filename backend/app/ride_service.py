@@ -69,6 +69,11 @@ def public(ride, user, invitation=False):
     rider = repo.get(User, ride.rider_id)
     vehicle = {'registration':ride.vehicle_registration,'model':ride.vehicle_model,'color':ride.vehicle_color} if ride.vehicle_registration else None
     result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code, 'vehicle':vehicle} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
+    from .models import MockPayment
+    from flask import current_app
+    payment = db.session.get(MockPayment, ride.id)
+    result['test_payment'] = payment.public() if payment else None
+    result['test_payments_enabled'] = current_app.config['TEST_PAYMENTS_ENABLED']
     result['cancellation'] = cancellation(ride, user) if ride.status == 'CANCELLED' else None
     if not invitation and user.role in ('driver','admin'):
         allocation = repo.get(RevenueLedger, ride.id)

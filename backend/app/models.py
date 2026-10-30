@@ -213,3 +213,15 @@ class DriverVehicle(db.Model):
 
     def public(self):
         return {'registration':self.registration,'model':self.model,'color':self.color,'version':self.version}
+
+
+class MockPayment(db.Model):
+    """Testing only; never a payment receipt or money movement."""
+    __tablename__ = 'mock_payments'
+    ride_id = db.Column(db.String(36), db.ForeignKey('rides.id'), primary_key=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default='PENDING')
+    __table_args__ = (db.CheckConstraint("status IN ('PENDING','FAILED','SUCCESS')", name='valid_mock_payment_status'),)
+
+    def public(self):
+        return dict(status=self.status, amount=format(self.amount, '.2f'), currency='INR', test_only=True)

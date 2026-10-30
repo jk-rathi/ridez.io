@@ -31,6 +31,7 @@ def create_app(config=None):
     app.config.update(SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///ridez.db') if development else os.getenv('DATABASE_URL'), JWT_SECRET=jwt_secret, USER_CODE_SECRET=code_secret, SQLALCHEMY_TRACK_MODIFICATIONS=False)
     if config:
         app.config.update(config)
+    app.config.setdefault('TEST_PAYMENTS_ENABLED', os.getenv('TEST_PAYMENTS_ENABLED', '1' if development else '0') == '1')
     app.config.setdefault('SIMULATOR_ENABLED', os.getenv('SIMULATOR_ENABLED', '1' if development else '0') == '1')
     app.config.setdefault('ROUTE_PROVIDER', os.getenv('ROUTE_PROVIDER', 'simulator' if development else 'google'))
     app.config.setdefault('GOOGLE_MAPS_SERVER_KEY', os.getenv('GOOGLE_MAPS_SERVER_KEY', ''))
@@ -68,7 +69,7 @@ def create_app(config=None):
     db.init_app(app)
     Migrate(app, db)
     from .routes import api
-    from . import ride_routes
+    from . import ride_routes, test_payment_routes
     app.register_blueprint(api, url_prefix='/api/v1')
     from .realtime import init_realtime
     init_realtime(app)

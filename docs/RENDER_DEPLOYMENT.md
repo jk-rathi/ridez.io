@@ -115,3 +115,5 @@ python -c "import secrets; print(secrets.token_hex(32)); print(secrets.token_hex
 Paste them into the two secret environment fields in Render, not into Git or chat. If these secrets already exist for an installation you are retaining, restore their existing values instead of generating replacements. Keep `APP_ENV=production`.
 
 Confirm the service has a persistent disk mounted at `/var/data`, then save the environment changes and deploy/redeploy. These are runtime service settings, not frontend variables; do not add a `VITE_` prefix. The latest startup error lists only the missing variable names, never their values. The Google keys and other settings in the guide are still required for live routing.
+
+For mock QR payment testing, enable `TEST_PAYMENTS_ENABLED=1` in Render Environment and deploy. See [TEST_PAYMENTS.md](../TEST_PAYMENTS.md). These simulations do not transfer money.

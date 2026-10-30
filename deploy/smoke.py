@@ -52,7 +52,7 @@ def main():
             assert admin['user']['role']=='admin'
             docker('exec','--user','10001:10001',name,'python','-c',
                 "from pathlib import Path; names=[item.split(b'=',1)[0] for item in Path('/proc/1/environ').read_bytes().split(bytes([0]))]; assert not any(key.startswith(b'BOOTSTRAP_ADMIN') for key in names)")
-            for path in ('/','/rider/history','/driver/account','/admin/drivers'):
+            for path in ('/','/rider/history','/driver/account','/admin/drivers','/test-payment/deployment-check'):
                 status,html,_=request(path)
                 assert status==200 and b'<div id="root">' in html
             user={'name':'Deployment smoke','mobile':'+919876543210','password':secrets.token_urlsafe(24)}

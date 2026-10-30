@@ -14,7 +14,7 @@ def register_frontend(app):
         try:
             response = send_from_directory(root, path)
         except NotFound:
-            if path in ('login', 'register') or path.split('/')[0] in ('rider', 'driver', 'admin'):
+            if path in ('login', 'register') or path.split('/')[0] in ('rider', 'driver', 'admin', 'test-payment'):
                 response = send_from_directory(root, 'index.html')
             else:
                 return jsonify(error='Resource not found'), 404
@@ -27,7 +27,7 @@ def register_frontend(app):
     @app.after_request
     def security_headers(response):
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Referrer-Policy'] = 'no-referrer' if request.path.startswith('/test-payment/') else 'strict-origin-when-cross-origin'
         response.headers['Permissions-Policy'] = 'geolocation=(self)'
         response.headers['X-Frame-Options'] = 'DENY'
         if request.is_secure:
