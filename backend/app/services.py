@@ -77,3 +77,29 @@ def login(data):
     now = datetime.now(timezone.utc)
     token = jwt.encode({'sub': str(user.id), 'iat': now, 'exp': now + timedelta(minutes=15)}, current_app.config['JWT_SECRET'], algorithm='HS256')
     return {'access_token': token, 'expires_in': 900, 'user': user.public()}
+
+
+def rider_trip_otp(user):
+    # Domain-separated from account codes; stable for existing and new accounts.
+    digest = hmac.new(current_app.config['USER_CODE_SECRET'].encode(),
+                      f'trip-otp:v1:{user.user_code}'.encode(), hashlib.sha256).digest()
+    return f'{int.from_bytes(digest, "big") % 1000000:06d}'
+
+
+def verify_trip_otp(rider, driver_id, value):
+    from collections import deque
+    from time import monotonic
+    buckets = current_app.extensions.setdefault('trip_otp_attempts', {})
+    at = monotonic()
+    for key in list(buckets):
+        while buckets[key] and buckets[key][0] <= at - 60:
+            buckets[key].popleft()
+        if not buckets[key]:
+            del buckets[key]
+    attempts = buckets.setdefault(driver_id, deque())
+    if len(attempts) >= 5:
+        raise ApiError('Too many OTP attempts. Try again in one minute', 429)
+    if (not isinstance(value, str) or len(value) != 6 or not value.isascii()
+            or not value.isdigit() or not hmac.compare_digest(value, rider_trip_otp(rider))):
+        attempts.append(at)
+        raise ApiError('Enter the correct six-digit OTP provided by the rider')

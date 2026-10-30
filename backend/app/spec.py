@@ -61,3 +61,7 @@ for action in ['accept', 'reject', 'cancel', 'depart', 'arrive', 'start', 'compl
 SPEC['paths']['/rides/{ride_id}'] = {'parameters': [{'name': 'ride_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}], 'get': operation('Get a ride you participate in (or admin)', protected=True)}
 SPEC['paths']['/rides/{ride_id}']['get']['description']='Riders receive their fare and trip details only. Settlement amounts and percentages are returned only to the assigned driver or an admin. Rider workspace/history/booking responses follow the same filtering.'
 SPEC['paths']['/admin/drivers/{driver_id}/approve'] = {'parameters': [{'name': 'driver_id', 'in': 'path', 'required': True, 'schema': {'type': 'integer'}}], 'post': operation('Approve pending driver and record an audit reason', ['reason'], protected=True)}
+
+SPEC['paths']['/rides/{ride_id}/start']['post'] = operation('Start the assigned waiting trip using the rider’s fixed six-digit OTP', ['otp'], protected=True)
+SPEC['paths']['/rides/{ride_id}/start']['post']['requestBody']['content']['application/json']['schema']['properties']['otp'] = {'type':'string','pattern':'^[0-9]{6}$','description':'Provided by the rider at pickup. Five failed attempts per driver per minute in the single-process development limiter.'}
+SPEC['paths']['/workspace']['get']['description'] = 'Rider workspaces include trip_otp, a fixed six-digit string for that account. Driver and admin responses never include this code.'

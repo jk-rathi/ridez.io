@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from . import db
 from . import ride_repository as repo
 from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, AdminAudit
-from .services import ApiError
+from .services import ApiError, rider_trip_otp, verify_trip_otp
 from . import location_service, matching, route_provider, fare_service, revenue_service
 import math
 
@@ -185,7 +185,7 @@ def reject(user, ride_id):
     return dict(status=invitation.status)
 
 
-def move(user, ride_id, action):
+def move(user, ride_id, action, data=None):
     expire()
     ride = accessible(user, ride_id)
     if action == 'cancel':
@@ -208,6 +208,8 @@ def move(user, ride_id, action):
         if action not in transitions:
             raise ApiError('Unknown trip action', 404)
         old, new = transitions[action]
+        if action == 'start' and ride.status in (old, new):
+            verify_trip_otp(repo.get(User, ride.rider_id), user.id, (data or {}).get('otp'))
         if ride.status == new:
             return public(ride, user)
         if ride.status != old:
@@ -232,6 +234,8 @@ def snapshot(user):
     rides = repo.all_rides(user)
     active = repo.get(ActiveRide, user.id)
     result = {'rides': [public(ride, user) for ride in rides], 'active_ride': public(repo.get(Ride, active.ride_id), user) if active else None, 'simulator': current_app.config['ROUTE_PROVIDER'] == 'simulator', 'route_provider':current_app.config['ROUTE_PROVIDER'], 'booking_enabled':current_app.config['ROUTE_PROVIDER'] == 'google' or current_app.config['SIMULATOR_ENABLED'], 'user': user.public()}
+    if user.role == 'rider':
+        result['trip_otp'] = rider_trip_otp(user)
     if user.role == 'driver':
         from .models import DriverLocation
         presence = repo.get(DriverPresence, user.id)

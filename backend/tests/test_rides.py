@@ -56,7 +56,7 @@ def test_full_ride_and_exactly_once_settlement(client, app, actors):
     assert post(client,actors,'driver',f'/rides/{ride_id}/accept').status_code == 200
     assert post(client,actors,'driver',f'/rides/{ride_id}/start').status_code == 409
     for action in ['depart','arrive','start','complete']:
-        response=post(client,actors,'driver',f'/rides/{ride_id}/{action}')
+        response=post(client,actors,'driver',f'/rides/{ride_id}/{action}', **({'otp': client.get('/api/v1/workspace', headers=actors['rider']['headers']).json['trip_otp']} if action == 'start' else {}))
         assert response.status_code == 200, response.json
     settlement=response.json['ride']['settlement']
     assert Decimal(settlement['driver_amount']) + Decimal(settlement['company_amount']) == Decimal(ride['quote']['total'])

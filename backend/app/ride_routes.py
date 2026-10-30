@@ -74,7 +74,7 @@ def reject(ride_id):
 @api.post('/rides/<ride_id>/<action>')
 @authenticated()
 def progress(ride_id, action):
-    return jsonify(ride=service.move(g.user, ride_id, action))
+    return jsonify(ride=service.move(g.user, ride_id, action, body() if action == 'start' else None))
 
 
 @api.post('/admin/drivers/<int:driver_id>/approve')

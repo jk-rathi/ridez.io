@@ -21,7 +21,7 @@ def in_progress(client,actors):
     prepare(client,actors)
     ride=book(client,actors)
     for action in ('accept','depart','arrive','start'):
-        response=post(client,actors,'driver',f"/rides/{ride['id']}/{action}")
+        response=post(client,actors,'driver',f"/rides/{ride['id']}/{action}", **({'otp': client.get('/api/v1/workspace', headers=actors['rider']['headers']).json['trip_otp']} if action == 'start' else {}))
         assert response.status_code==200,response.json
     return ride
 
