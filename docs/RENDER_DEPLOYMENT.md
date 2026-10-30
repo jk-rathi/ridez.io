@@ -37,6 +37,25 @@ The Blueprint sets:
 
 For a manual Web Service, create the disk and set every environment variable shown in `render.yaml`, including distinct random secrets of at least 32 characters. Leave Build/Start commands at the Dockerfile defaults. Render terminates HTTPS; do not configure a separate frontend Static Site or CORS. The app preserves the incoming Host and trusts one proxy for forwarded protocol/client IP. Enable `TRUST_PROXY_HEADERS` only behind the trusted proxy.
 
+## Create admin without paid Shell access
+
+On an existing Render Web Service, open **Environment** and add:
+
+| Key | Value |
+| --- | --- |
+| `BOOTSTRAP_ADMIN` | `1` |
+| `BOOTSTRAP_ADMIN_MOBILE` | Your admin mobile, including country code |
+| `BOOTSTRAP_ADMIN_NAME` | Your display name (optional; defaults to Admin) |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Your chosen strong password, 10–128 characters |
+
+Save and deploy the latest commit. Startup runs migrations and creates this admin before serving traffic. The deploy logs report **Bootstrap admin created successfully.** Sign in on the normal website using that mobile/password. No public admin-registration or bootstrap URL is exposed, and bootstrap credentials are removed from the web worker's environment after startup.
+
+Use a mobile number that is not already registered as a rider/driver. Bootstrap refuses to promote existing users, reactivate disabled admins or reset passwords. On later restarts, an existing active admin is left unchanged; use the original password. Invalid or incomplete bootstrap settings stop startup with an error that names the missing setting without printing its value.
+
+**Persistent database:** after confirming sign-in, set `BOOTSTRAP_ADMIN=0` and remove the three bootstrap credential/name variables. Keep the regular database/JWT/code secrets. The admin stays in the database.
+
+**Free Render with ephemeral SQLite:** this method avoids paying for Shell, but it does not make the database persistent. A restart/redeploy can lose all local accounts, rides and earnings. Leaving bootstrap enabled recreates just the admin when the database is empty; it does not restore other data. Disabling bootstrap and redeploying on ephemeral storage can therefore remove your only admin. Use persistent storage before relying on the app for real records. The supplied Blueprint still uses a paid persistent disk; this change does not provision a free durable database.
+
 ## Check the deployment
 
 - `/` and a direct reload of `/rider/history` load the website. `/api/v1/health` responds; `/api/v1/ready` must return HTTP 200 with `database: true` and `matching_worker: true`. Readiness returns 503 when the schema is outdated, the database is inaccessible or the loop stalls. It does not make billable Google calls and does not establish Google key readiness.

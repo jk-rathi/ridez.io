@@ -8,7 +8,7 @@ Taxi booking application built with **React and JavaScript**, Vite, and Flask. I
 
 ## Deploy on Render
 
-Use the included [Render deployment guide](docs/RENDER_DEPLOYMENT.md) and root `render.yaml` Blueprint. It builds one Docker web service with HTTPS, Gunicorn, startup migrations and a persistent SQLite disk. A paid instance/disk and Google keys are required for the default live-routing setup.
+Use the included [Render deployment guide](docs/RENDER_DEPLOYMENT.md) and root `render.yaml` Blueprint. It builds one Docker web service with HTTPS, Gunicorn, startup migrations and a persistent SQLite disk. A paid instance/disk and Google keys are required for the default live-routing setup. If Render Shell is unavailable, the guide also provides admin creation through runtime Environment settings.
 
 ## Run locally
 

@@ -11,5 +11,10 @@ fi
 # The single instance runs migrations before accepting HTTP traffic.
 if [ "${1:-}" = gunicorn ]; then
     python -m flask --app wsgi db upgrade
+    if [ "${BOOTSTRAP_ADMIN:-0}" = 1 ]; then
+        python -m flask --app wsgi bootstrap-admin
+    fi
+    # The web worker does not need bootstrap credentials in its environment.
+    unset BOOTSTRAP_ADMIN BOOTSTRAP_ADMIN_MOBILE BOOTSTRAP_ADMIN_NAME BOOTSTRAP_ADMIN_PASSWORD
 fi
 exec "$@"

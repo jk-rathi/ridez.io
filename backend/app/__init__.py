@@ -124,4 +124,14 @@ def create_app(config=None):
         register({'mobile': mobile, 'name': name, 'password': password, 'role': 'admin'}, allow_admin=True)
         click.echo('Admin created')
 
+    @app.cli.command('bootstrap-admin')
+    def bootstrap_admin_command():
+        """Create an admin from runtime settings without exposing a registration API."""
+        from .bootstrap import bootstrap_admin
+        from .services import ApiError
+        try:
+            click.echo(bootstrap_admin())
+        except ApiError as error:
+            raise click.ClickException(error.message)
+
     return app

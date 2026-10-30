@@ -36,15 +36,22 @@ def main():
             time.sleep(1)
         raise RuntimeError('Container readiness did not succeed')
     with tempfile.TemporaryDirectory() as temp:
+        admin_password=secrets.token_urlsafe(24)
         env=Path(temp)/'test.env'
         env.write_text('APP_ENV=production\nDATABASE_URL=sqlite:////var/data/ridez.db\n'
             f'JWT_SECRET={secrets.token_hex(32)}\nUSER_CODE_SECRET={secrets.token_hex(32)}\n'
-            'ROUTE_PROVIDER=simulator\nSIMULATOR_ENABLED=1\nTRUST_PROXY_HEADERS=1\n')
+            'ROUTE_PROVIDER=simulator\nSIMULATOR_ENABLED=1\nTRUST_PROXY_HEADERS=1\n'
+            f'BOOTSTRAP_ADMIN=1\nBOOTSTRAP_ADMIN_MOBILE=+12025550125\nBOOTSTRAP_ADMIN_PASSWORD={admin_password}\n')
         env.chmod(0o600)
         try:
             docker('run','-d','--name',name,'--env-file',str(env),'-v',volume+':/var/data',
                 '-p',f'127.0.0.1:{args.port}:10000',args.image,stdout=subprocess.DEVNULL)
             ready()
+            _,admin,_=request('/api/v1/auth/login',{'mobile':'+12025550125','password':admin_password})
+            admin=json.loads(admin)
+            assert admin['user']['role']=='admin'
+            docker('exec','--user','10001:10001',name,'python','-c',
+                "from pathlib import Path; names=[item.split(b'=',1)[0] for item in Path('/proc/1/environ').read_bytes().split(bytes([0]))]; assert not any(key.startswith(b'BOOTSTRAP_ADMIN') for key in names)")
             for path in ('/','/rider/history','/driver/account','/admin/drivers'):
                 status,html,_=request(path)
                 assert status==200 and b'<div id="root">' in html
@@ -64,6 +71,8 @@ def main():
             otp=json.loads(data)['trip_otp']
             docker('restart',name,stdout=subprocess.DEVNULL)
             ready()
+            _,admin_again,_=request('/api/v1/auth/login',{'mobile':'+12025550125','password':admin_password})
+            assert json.loads(admin_again)['user']['id']==admin['user']['id']
             _,data,_=request('/api/v1/workspace',headers=authorization)
             assert json.loads(data)['trip_otp']==otp
             assert json.loads(data)['active_ride'] is None
@@ -78,7 +87,7 @@ def main():
                 raise AssertionError('Logged-out token was accepted')
             except urllib.error.HTTPError as error:
                 assert error.code==401
-            print('PASS: production image, migrations, frontend, readiness, secure cookies, restart persistence, cancellation and logout')
+            print('PASS: production image, startup admin, migrations, frontend, readiness, secure cookies, restart persistence, cancellation and logout')
         finally:
             subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             subprocess.run(['docker','volume','rm',volume],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
