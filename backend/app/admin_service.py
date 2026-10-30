@@ -1,9 +1,9 @@
 import json
 from datetime import timedelta
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 from flask import current_app
-from sqlalchemy import select, func, literal, cast, String, union_all, or_
+from sqlalchemy import select, func, literal, cast, String, union_all, or_, update
 from . import db, ride_repository as repo
 from .models import User, Ride, DriverPresence, DriverLocation, ActiveRide, RevenueLedger, AdminAudit, FarePolicy, RevenueShareSetting
 from .location_service import utcnow
@@ -15,12 +15,13 @@ def metrics():
     at=utcnow()
     cutoff=at-timedelta(seconds=current_app.config['LOCATION_STALE_SECONDS'])
     statuses=dict(db.session.execute(select(Ride.status,func.count()).group_by(Ride.status)).all())
+    suspended=db.session.scalar(select(func.count()).select_from(User).where(User.role=='driver',User.status=='suspended'))
     pending=db.session.scalar(select(func.count()).select_from(User).where(User.role=='driver',User.status=='pending'))
     online=select(DriverPresence.driver_id).join(User,User.id==DriverPresence.driver_id).where(DriverPresence.available.is_(True),User.status=='active',~DriverPresence.driver_id.in_(select(ActiveRide.user_id)))
     available=db.session.scalar(select(func.count()).select_from(online.subquery()))
     fresh=db.session.scalar(select(func.count()).select_from(online.join(DriverLocation,DriverLocation.driver_id==DriverPresence.driver_id).where(DriverLocation.fresh.is_(True),DriverLocation.recorded_at>cutoff,DriverLocation.updated_at>cutoff).subquery()))
     driver,company=db.session.execute(select(func.sum(RevenueLedger.driver_amount),func.sum(RevenueLedger.company_amount))).one()
-    return dict(active_rides=sum(count for status,count in statuses.items() if status in ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS')),searching_rides=statuses.get('SEARCHING',0),completed_rides=statuses.get('COMPLETED',0),fresh_available_drivers=fresh,stale_available_drivers=max(0,available-fresh),pending_driver_applications=pending,driver_allocations=str(driver or Decimal('0.00')),company_allocations=str(company or Decimal('0.00')),currency='INR',as_of=at.isoformat()+'Z')
+    return dict(active_rides=sum(count for status,count in statuses.items() if status in ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS')),searching_rides=statuses.get('SEARCHING',0),completed_rides=statuses.get('COMPLETED',0),fresh_available_drivers=fresh,stale_available_drivers=max(0,available-fresh),pending_driver_applications=pending,suspended_drivers=suspended,driver_allocations=str(driver or Decimal('0.00')),company_allocations=str(company or Decimal('0.00')),currency='INR',as_of=at.isoformat()+'Z')
 
 
 def events():
@@ -69,7 +70,8 @@ def audit_detail(category,identifier):
         raise ApiError('Audit entry not found',404)
     if category=='driver':
         driver=repo.get(User,record.driver_id)
-        return dict(title='Driver approval',subject=f'{driver.name} · {driver.user_code}' if driver else 'Driver account',changes=[dict(field='Account status',before='Pending',after='Active')])
+        title,before,after = {'driver.approved':('Driver approval','pending','active'),'driver.suspended':('Driver suspension','active','suspended'),'driver.reinstated':('Driver reinstatement','suspended','active')}.get(record.action,('Driver status change','unknown','unknown'))
+        return dict(title=title,subject=f'{driver.name} · {driver.user_code}' if driver else 'Driver account',changes=[dict(field='Account status',before=(record.before_status or before).capitalize(),after=(record.after_status or after).capitalize())])
     if category=='revenue':
         return dict(title='Revenue allocation change',effective_from=record.effective_from.isoformat()+'Z',changes=[dict(field='Driver share',before=f'{record.previous_driver_pct}%',after=f'{record.driver_pct}%'),dict(field='Company share',before=f'{record.previous_company_pct}%',after=f'{record.company_pct}%')])
     previous=repo.get(FarePolicy,record.version-1)
@@ -84,3 +86,82 @@ def audit_detail(category,identifier):
             return 'Enabled' if value else 'Disabled'
         return ('₹' if key in ('base','per_km','per_minute','minimum') else '')+str(value)
     return dict(title='Fare policy change',changes=[dict(field=labels.get(key,key),before=describe(key,before.get(key)),after=describe(key,value)) for key,value in after.items() if before.get(key)!=value])
+
+
+DRIVER_TRANSITIONS = {
+    'approve': ('pending', 'active', 'driver.approved'),
+    'suspend': ('active', 'suspended', 'driver.suspended'),
+    'reinstate': ('suspended', 'active', 'driver.reinstated'),
+}
+
+
+def change_driver_status(actor, driver_id, action, data):
+    driver = repo.get(User, driver_id)
+    if not driver or driver.role != 'driver':
+        raise ApiError('Driver not found', 404)
+    old, new, event = DRIVER_TRANSITIONS[action]
+    reason = data.get('reason')
+    if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 300:
+        raise ApiError('Reason must contain 1–300 characters')
+    reason = reason.strip()
+    version = data.get('version')
+    legacy = action == 'approve' and version is None
+    if not legacy and (type(version) is not int or version < 0):
+        raise ApiError('A valid driver status version is required')
+    if legacy:
+        if driver.status == new:
+            return driver.public()
+        version = driver.status_revision
+    if driver.status == new and driver.status_revision == version + 1:
+        previous = db.session.scalar(select(AdminAudit).where(AdminAudit.driver_id==driver_id,
+            AdminAudit.status_revision==version+1, AdminAudit.action==event,
+            AdminAudit.admin_id==actor.id, AdminAudit.reason==reason))
+        if previous:
+            return driver.public()
+    if driver.status_revision != version:
+        raise ApiError('Driver status changed. Reload drivers and review again', 409)
+    if driver.status != old:
+        raise ApiError(f'Cannot {action} a {driver.status} driver', 409)
+    changed = db.session.execute(update(User).where(User.id==driver_id, User.role=='driver',
+        User.status==old, User.status_revision==version).values(status=new,status_revision=version+1)).rowcount
+    if changed != 1:
+        repo.rollback()
+        raise ApiError('Driver status changed. Reload drivers and review again', 409)
+    from .session_service import stop_requests
+    stop_requests(driver_id)
+    repo.add(AdminAudit(id=str(uuid4()), admin_id=actor.id, driver_id=driver_id, action=event,
+        reason=reason, created_at=utcnow(), before_status=old, after_status=new, status_revision=version+1))
+    repo.commit()
+    db.session.expire_all()
+    return repo.get(User, driver_id).public()
+
+
+def driver_list(params):
+    try:
+        page=int(params.get('page','1'))
+        if not 1 <= page <= 100000:
+            raise ValueError()
+    except (ValueError,TypeError):
+        raise ApiError('Page must be a positive integer')
+    status=params.get('status','')
+    if status not in ('','pending','active','suspended','disabled'):
+        raise ApiError('Choose a valid driver status')
+    query_text=params.get('q','').strip()
+    if len(query_text)>100:
+        raise ApiError('Search must contain at most 100 characters')
+    query=select(User).where(User.role=='driver')
+    if status:
+        query=query.where(User.status==status)
+    if query_text:
+        pattern='%'+query_text.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+        query=query.where(or_(User.name.ilike(pattern,escape='\\'),User.user_code.ilike(pattern,escape='\\'),User.mobile.ilike(pattern,escape='\\')))
+    total=db.session.scalar(select(func.count()).select_from(query.subquery()))
+    drivers=db.session.scalars(query.order_by(User.id.desc()).offset((page-1)*20).limit(20)).all()
+    from .location_service import public as location_public
+    items=[]
+    for driver in drivers:
+        claim=repo.get(ActiveRide,driver.id)
+        ride=repo.get(Ride,claim.ride_id) if claim else None
+        items.append(driver.public() | {'location':location_public(repo.get(DriverLocation,driver.id)),
+            'active_ride':{'id':ride.id,'status':ride.status} if ride else None})
+    return dict(page=page,page_size=20,total=total,items=items)

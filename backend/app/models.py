@@ -11,11 +11,12 @@ class User(db.Model):
     user_code = db.Column(db.String(40), unique=True, nullable=False)
     role = db.Column(db.String(16), nullable=False)
     status = db.Column(db.String(16), nullable=False, default='active')
+    status_revision = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    __table_args__ = (db.CheckConstraint("role IN ('rider','driver','admin')", name='valid_user_role'), db.CheckConstraint("status IN ('active','pending','disabled')", name='valid_user_status'))
+    __table_args__ = (db.CheckConstraint("role IN ('rider','driver','admin')", name='valid_user_role'), db.CheckConstraint("status IN ('active','pending','disabled','suspended') AND (status != 'suspended' OR role = 'driver')", name='valid_user_status'))
 
     def public(self):
-        return dict(id=self.id, name=self.name, mobile=self.mobile, user_code=self.user_code, role=self.role, status=self.status)
+        return dict(id=self.id, name=self.name, mobile=self.mobile, user_code=self.user_code, role=self.role, status=self.status, status_revision=self.status_revision)
 
 
 class DriverPresence(db.Model):
@@ -167,6 +168,10 @@ class AdminAudit(db.Model):
     action = db.Column(db.String(40), nullable=False)
     reason = db.Column(db.String(300), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False)
+
+    before_status = db.Column(db.String(16))
+    after_status = db.Column(db.String(16))
+    status_revision = db.Column(db.Integer)
 
 
 class AuthSession(db.Model):

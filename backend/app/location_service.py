@@ -34,9 +34,10 @@ def public(location):
 
 def update(user, data, initializing=False):
     presence = repo.get(DriverPresence, user.id)
-    if user.status != 'active':
+    active = repo.get(ActiveRide, user.id)
+    if user.status != 'active' and not (user.status == 'suspended' and active and not initializing):
         raise ApiError('Driver approval is required', 403)
-    if not initializing and not (presence and presence.available) and not repo.get(ActiveRide, user.id):
+    if not initializing and not (presence and presence.available) and not active:
         raise ApiError('Location updates are only allowed while available or on a trip', 409)
     latitude = coordinate(data.get('latitude'), 'Latitude', 90)
     longitude = coordinate(data.get('longitude'), 'Longitude', 180)

@@ -15,6 +15,8 @@ def invite(ride, started_at):
     for presence in repo.eligible_drivers(utcnow()):
         location = repo.get(DriverLocation, presence.driver_id)
         if presence.driver_id not in previous and distance_m(quoted.pickup_lat, quoted.pickup_lng, location.latitude, location.longitude) <= ride.radius_m:
+            if not repo.lock_active_driver(presence.driver_id, require_available=True):
+                continue
             repo.add(Invitation(ride_id=ride.id, driver_id=presence.driver_id, status='PENDING', round_no=ride.round_no, expires_at=ride.expires_at))
 
 

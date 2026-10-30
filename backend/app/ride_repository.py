@@ -103,3 +103,11 @@ def set_available(driver_id, available):
     else:
         presence.available = available
     return presence
+
+
+def lock_active_driver(driver_id, require_available=False):
+    # Serialize availability/assignment with suspension using the same user row.
+    query = update(User).where(User.id==driver_id, User.role=='driver', User.status=='active')
+    if require_available:
+        query = query.where(select(DriverPresence.driver_id).where(DriverPresence.driver_id==driver_id, DriverPresence.available.is_(True)).exists())
+    return db.session.execute(query.values(status_revision=User.status_revision)).rowcount == 1

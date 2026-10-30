@@ -124,3 +124,25 @@ def admin_audit():
 def admin_audit_detail(category,identifier):
     from .admin_service import audit_detail
     return jsonify(audit_detail(category,identifier))
+
+
+@api.get('/admin/drivers')
+@authenticated('admin')
+def admin_drivers():
+    from flask import request
+    from .admin_service import driver_list
+    return jsonify(driver_list(request.args))
+
+
+@api.post('/admin/drivers/<int:driver_id>/suspend')
+@authenticated('admin')
+def suspend_driver(driver_id):
+    from .admin_service import change_driver_status
+    return jsonify(user=change_driver_status(g.user, driver_id, 'suspend', body()))
+
+
+@api.post('/admin/drivers/<int:driver_id>/reinstate')
+@authenticated('admin')
+def reinstate_driver(driver_id):
+    from .admin_service import change_driver_status
+    return jsonify(user=change_driver_status(g.user, driver_id, 'reinstate', body()))

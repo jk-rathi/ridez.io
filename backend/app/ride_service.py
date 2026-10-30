@@ -5,7 +5,7 @@ from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from . import db
 from . import ride_repository as repo
-from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger, AdminAudit
+from .models import User, DriverPresence, FareQuote, Ride, ActiveRide, Invitation, RevenueLedger
 from .services import ApiError, rider_trip_otp, verify_trip_otp
 from . import location_service, matching, route_provider, fare_service, revenue_service
 import math
@@ -113,7 +113,7 @@ def book(user, data):
 def availability(user, data):
     expire()
     if user.status != 'active':
-        raise ApiError('Admin approval is required before going available', 403)
+        raise ApiError('Your driver account is suspended' if user.status == 'suspended' else 'Admin approval is required before going available', 403)
     available = data.get('available')
     if not isinstance(available, bool):
         raise ApiError('Available must be true or false')
@@ -122,6 +122,9 @@ def availability(user, data):
     if repo.get(ActiveRide, user.id):
         raise ApiError('Complete your active trip before changing availability', 409)
     try:
+        if not repo.lock_active_driver(user.id):
+            repo.rollback()
+            raise ApiError('Your driver status changed. Refresh before going available', 403)
         if available:
             location_service.update(user, data, initializing=True)
         repo.set_available(user.id, available)
@@ -156,6 +159,9 @@ def accept(user, ride_id):
     if invitation.status != 'PENDING' or ride.status != 'SEARCHING' or ride.expires_at <= now():
         raise ApiError('This invitation is no longer available', 409)
     try:
+        if not repo.lock_active_driver(user.id):
+            repo.rollback()
+            raise ApiError('Your driver status changed. New rides are blocked', 403)
         if not repo.assign(ride.id, user.id, now()):
             repo.rollback()
             raise ApiError('Another driver has already accepted this ride', 409)
@@ -241,6 +247,11 @@ def snapshot(user):
         presence = repo.get(DriverPresence, user.id)
         result['location'] = location_service.public(repo.get(DriverLocation, user.id))
         entries = repo.ledger(user.id)
+        if user.status == 'suspended':
+            from .models import AdminAudit
+            from sqlalchemy import select
+            review = db.session.scalar(select(AdminAudit).where(AdminAudit.driver_id==user.id, AdminAudit.action=='driver.suspended', AdminAudit.status_revision==user.status_revision))
+            result['suspension'] = {'reason':review.reason,'created_at':review.created_at.isoformat()+'Z'} if review else None
         result.update(available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and result['location']['fresh'] and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
     if user.role == 'admin':
         from .admin_service import metrics
@@ -251,15 +262,5 @@ def snapshot(user):
 
 
 def approve(user, driver_id, data):
-    driver = repo.get(User, driver_id)
-    if not driver or driver.role != 'driver':
-        raise ApiError('Driver not found', 404)
-    reason = text(data, 'reason', 300)
-    if driver.status == 'disabled':
-        raise ApiError('Disabled drivers require a separate reinstatement review', 409)
-    if driver.status == 'pending':
-        driver.status = 'active'
-        repo.add(AdminAudit(id=str(uuid4()), admin_id=user.id, driver_id=driver.id, action='driver.approved', reason=reason, created_at=now()))
-        repo.notify(driver.id)
-        repo.commit()
-    return driver.public()
+    from .admin_service import change_driver_status
+    return change_driver_status(user, driver_id, 'approve', data)

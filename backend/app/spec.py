@@ -75,3 +75,14 @@ for action, summary in [('refresh','Rotate the single-use refresh cookie and iss
         endpoint['security'] = [{'refreshCookie':[]}]
     SPEC['paths']['/auth/'+action] = {'post':endpoint}
 SPEC['paths']['/auth/login']['post']['description'] = 'Creates a revocable server session, returns access_token/expires_in/expires_at/user and sets an HttpOnly SameSite=Lax refresh cookie scoped to /api/v1/auth. Production cookies require HTTPS. Responses are not cached.'
+
+SPEC['paths']['/admin/drivers'] = {'get':operation('Search and paginate driver accounts with status and active trip summaries (admin)',protected=True)}
+SPEC['paths']['/admin/drivers']['get']['parameters'] = [{'name':'page','in':'query','schema':{'type':'integer','minimum':1,'default':1}},{'name':'status','in':'query','schema':{'type':'string','enum':['pending','active','suspended','disabled']}},{'name':'q','in':'query','schema':{'type':'string','maxLength':100},'description':'Literal search by name, mobile or permanent code.'}]
+for action in ('suspend','reinstate'):
+    endpoint = operation(f'{action.capitalize()} a driver with a version guard and immutable review reason (admin)',protected=True)
+    endpoint['requestBody'] = {'required':True,'content':{'application/json':{'schema':{'type':'object','required':['version','reason'],'properties':{'version':{'type':'integer','minimum':0,'description':'status_revision from the current driver list'},'reason':{'type':'string','minLength':1,'maxLength':300}}}}}}
+    endpoint['description'] = 'Suspension blocks new work but preserves active trips, earnings and sign-in. Suspension reasons are visible to the driver. Reinstatement leaves the driver offline. Exact retries are idempotent; stale versions return 409.'
+    SPEC['paths'][f'/admin/drivers/{{driver_id}}/{action}'] = {'parameters':[{'name':'driver_id','in':'path','required':True,'schema':{'type':'integer'}}],'post':endpoint}
+SPEC['paths']['/admin/drivers/{driver_id}/approve']['post']['requestBody']['content']['application/json']['schema']['properties']['version'] = {'type':'integer','minimum':0,'description':'Optional for legacy approval clients; new clients should send status_revision.'}
+SPEC['components']['schemas']['User']['properties']['status_revision'] = {'type':'integer','minimum':0}
+SPEC['info']['version'] = '0.8.0'

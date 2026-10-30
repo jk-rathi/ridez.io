@@ -22,3 +22,17 @@
 @media(max-width:480px){.otp-entry{padding:14px 12px}.otp-blocks{gap:6px}.otp-blocks input{height:46px;font-size:20px}}
 
 .session-loading{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:30px;text-align:center}
+
+.driver-filters{display:flex;gap:14px;align-items:flex-end;margin:24px 0;flex-wrap:wrap}
+.driver-filters label{display:block;flex:1;min-width:140px;font-size:12px;color:var(--muted)}
+.driver-filters input,.driver-filters select,.driver-review textarea{display:block;width:100%;margin-top:8px;padding:13px;border:1px solid #dbe4d0;border-radius:7px;background:#fafcf6;color:var(--ink);font:inherit}
+.driver-review{padding:22px;margin:22px 0;border:1px solid #dbe5ce;border-radius:10px;background:#f7faef}
+.driver-review h3{font-size:17px;margin-bottom:8px}.driver-review p{font-size:12px;margin:8px 0}
+.driver-review label{display:block;font-size:12px;font-weight:600;margin-top:18px}.driver-review textarea{min-height:100px;resize:vertical}
+.driver-review-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px;flex-wrap:wrap}
+.review-danger{background:#953b2b;color:white}.driver-trip-notice{padding:12px;background:#eaf1df;border-radius:7px}
+.managed-driver{gap:20px}.managed-driver>div{min-width:0}.managed-driver strong,.managed-driver small{overflow-wrap:anywhere}.managed-driver .button{flex-shrink:0}
+.driver-status{display:inline-block;width:fit-content;padding:5px 9px;margin:8px 0 3px;border-radius:20px;background:#edf2e7;font-size:10px;font-weight:600;color:#486332}
+.status-suspended{background:#f9e9de;color:#963d26}.status-disabled{background:#eceeeb;color:#646d62}
+.suspension-notice{padding:18px 22px;margin:18px 0;border:1px solid #efd7c5;border-radius:9px;background:#fff6ed;color:#833c26;font-size:12px}.suspension-notice p{color:#833c26;margin:6px 0}.suspension-notice small{color:#8b6a56}
+@media(max-width:600px){.driver-filters{flex-direction:column;align-items:stretch}.driver-filters label{width:100%}.managed-driver{align-items:flex-start;flex-direction:column}.managed-driver .button{width:100%}.driver-review{padding:16px}.driver-review-actions .button{width:100%}.driver-filters input,.driver-filters select,.driver-review textarea{font-size:16px}}

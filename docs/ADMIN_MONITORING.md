@@ -25,11 +25,11 @@ The existing realtime invalidation and periodic refresh update these counters. C
 
 ## Audit history
 
-Open **Admin → Audit history**. Filter by driver approvals, fare changes or revenue-share changes. Search by reason, admin name or action. Results are ordered by save time and paginated in groups of 20; no source rows are deleted or truncated for pagination.
+Open **Admin → Audit history**. Filter by driver reviews (approvals, suspensions and reinstatements), fare changes or revenue-share changes. Search by reason, admin name or action. Results are ordered by save time and paginated in groups of 20; no source rows are deleted or truncated for pagination.
 
 Every entry shows actor, timestamp, reason, category and target. **View changes** shows:
 
-- Driver approval: driver identity and pending → active status.
+- Driver review: driver identity and recorded before/after status. Legacy approval entries retain pending → active details.
 - Fare policy: fields changed relative to the prior immutable version, including detailed zone centre, radius, multiplier, weekdays and window.
 - Revenue share: previous active percentages at save time, new percentages, and the new effective date/time. A scheduled change is recorded when saved and may take effect later.
 
@@ -43,4 +43,6 @@ The history combines existing immutable driver audit records, fare-policy versio
 4. Approve a driver or save a fare/revenue setting with a reason. Open Audit history and search for the reason, then inspect before/after values.
 5. Attempt the audit APIs with a rider or driver token; access is denied. Trip details requested with the rider token contain no settlement object.
 
-SQLite tests and fixture-backed browser checks verify these behaviors. SQL Server integration, production scaling, suspension/incident actions and payment transfers remain separate work.
+SQLite tests and fixture-backed browser checks verify these behaviors. SQL Server integration, production scaling, incident actions and payment transfers remain separate work.
+
+Driver suspension and reinstatement are described in [driver management](DRIVER_MANAGEMENT.md). Apply the latest migrations when upgrading to that feature; the no-migration note above applies only to the earlier monitoring update.

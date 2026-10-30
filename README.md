@@ -54,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-Vite proxies `/api` and `/socket.io` (including WebSockets) to Flask on port 5000. An optional `API_PROXY_TARGET` process variable changes the local proxy destination. Start the backend with **`python run.py`** as shown above: it starts Socket.IO and the background matching loop. `flask run` does not start the matching worker. Drivers start pending approval. Admins cannot self-register; create one interactively from `backend` after migrations:
+Vite proxies `/api` and `/socket.io` (including WebSockets) to Flask on port 5000. An optional `API_PROXY_TARGET` process variable changes the local proxy destination. Start the backend with **`python run.py`** as shown above: it starts Socket.IO and the background matching loop. `flask run` does not start the matching worker. Drivers start pending approval. Admins can suspend/reinstate approved drivers with a review reason; suspension blocks new work while preserving an assigned trip. See [driver management](docs/DRIVER_MANAGEMENT.md). Admins cannot self-register; create one interactively from `backend` after migrations:
 
 ```powershell
 # Windows
@@ -130,7 +130,7 @@ Revenue tests cover role restrictions, percentage bounds/sums, immediate/future 
 
 Privacy/admin tests verify rider settlement exclusion across API responses, preserved fare/driver details, driver/admin financial access, audit authorization/search/pagination, before/after values, live counters and stale-driver totals. Browser checks cover rider receipts/history (including defensive handling of a stale payload), driver earnings, audit filters/details and mobile layout.
 
-Remaining milestones include driver suspension/reinstatement and incident support, account recovery, cancellation policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
+Remaining milestones include incident support, account recovery, cancellation policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
 
 ### Fixed rider trip OTP
 
@@ -139,3 +139,5 @@ Each rider sees a fixed six-digit OTP on their overview, including existing acco
 Codes are derived with a separate HMAC domain from the rider account code and `USER_CODE_SECRET`; keep that secret stable, as required for existing account codes. No schema migration is needed. Failed OTP checks are limited to five per driver per minute in the single-process development runtime; production needs shared rate limiting. This is a reusable pickup PIN, not an SMS or expiring code.
 
 Session checks cover single-use refresh rotation, replay revocation, absolute expiry, disabled accounts, cross-origin/CSRF rejection, device-specific and all-device logout, socket disconnection, concurrent refresh, restart persistence and preserved driver assignments. The session migration adds two tables and preserves existing accounts; existing access tokens require a fresh sign-in after upgrading.
+
+Driver review tests cover status/version validation, idempotent retries, immutable audit snapshots, admin-only access, searchable paginated lists, suspended matching exclusion and continued assigned-trip tracking/OTP completion. SQLite concurrency checks cover competing admin decisions and suspension racing availability/acceptance. SQL Server concurrency still requires integration validation.
