@@ -67,7 +67,8 @@ def public(ride, user, invitation=False):
     quoted = repo.get(FareQuote, ride.quote_id)
     driver = repo.get(User, ride.driver_id) if ride.driver_id else None
     rider = repo.get(User, ride.rider_id)
-    result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
+    vehicle = {'registration':ride.vehicle_registration,'model':ride.vehicle_model,'color':ride.vehicle_color} if ride.vehicle_registration else None
+    result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code, 'vehicle':vehicle} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
     if not invitation and user.role in ('driver','admin'):
         allocation = repo.get(RevenueLedger, ride.id)
         result['settlement'] = allocation.public() if allocation else None
@@ -162,7 +163,8 @@ def accept(user, ride_id):
         if not repo.lock_active_driver(user.id):
             repo.rollback()
             raise ApiError('Your driver status changed. New rides are blocked', 403)
-        if not repo.assign(ride.id, user.id, now()):
+        from .models import DriverVehicle
+        if not repo.assign(ride.id, user.id, now(), repo.get(DriverVehicle, user.id)):
             repo.rollback()
             raise ApiError('Another driver has already accepted this ride', 409)
         repo.add(ActiveRide(user_id=user.id, ride_id=ride.id))

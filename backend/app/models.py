@@ -16,7 +16,11 @@ class User(db.Model):
     __table_args__ = (db.CheckConstraint("role IN ('rider','driver','admin')", name='valid_user_role'), db.CheckConstraint("status IN ('active','pending','disabled','suspended') AND (status != 'suspended' OR role = 'driver')", name='valid_user_status'))
 
     def public(self):
-        return dict(id=self.id, name=self.name, mobile=self.mobile, user_code=self.user_code, role=self.role, status=self.status, status_revision=self.status_revision)
+        result = dict(id=self.id, name=self.name, mobile=self.mobile, user_code=self.user_code, role=self.role, status=self.status, status_revision=self.status_revision)
+        if self.role == 'driver':
+            vehicle = db.session.get(DriverVehicle, self.id)
+            result['vehicle'] = vehicle.public() if vehicle else None
+        return result
 
 
 class DriverPresence(db.Model):
@@ -77,6 +81,9 @@ class Ride(db.Model):
     requested_at = db.Column(db.DateTime, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     completed_at = db.Column(db.DateTime)
+    vehicle_registration = db.Column(db.String(20))
+    vehicle_model = db.Column(db.String(80))
+    vehicle_color = db.Column(db.String(40))
     round_no = db.Column(db.Integer, nullable=False, default=1, server_default='1')
     radius_m = db.Column(db.Integer, nullable=False, default=500, server_default='500')
     __table_args__ = (db.CheckConstraint("status IN ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS','COMPLETED','CANCELLED','NO_DRIVER_FOUND')", name='valid_ride_state'),)
@@ -172,6 +179,7 @@ class AdminAudit(db.Model):
     before_status = db.Column(db.String(16))
     after_status = db.Column(db.String(16))
     status_revision = db.Column(db.Integer)
+    details = db.Column(db.Text)
 
 
 class AuthSession(db.Model):
@@ -189,3 +197,15 @@ class RefreshToken(db.Model):
     session_id = db.Column(db.String(36), db.ForeignKey('auth_sessions.id'), nullable=False, index=True)
     created_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime)
+
+
+class DriverVehicle(db.Model):
+    __tablename__ = 'driver_vehicles'
+    driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    registration = db.Column(db.String(20), nullable=False)
+    model = db.Column(db.String(80), nullable=False)
+    color = db.Column(db.String(40), nullable=False)
+    version = db.Column(db.Integer, nullable=False)
+
+    def public(self):
+        return {'registration':self.registration,'model':self.model,'color':self.color,'version':self.version}

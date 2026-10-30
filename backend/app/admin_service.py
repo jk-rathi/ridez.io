@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from flask import current_app
 from sqlalchemy import select, func, literal, cast, String, union_all, or_, update
 from . import db, ride_repository as repo
-from .models import User, Ride, DriverPresence, DriverLocation, ActiveRide, RevenueLedger, AdminAudit, FarePolicy, RevenueShareSetting
+from .models import DriverVehicle, User, Ride, DriverPresence, DriverLocation, ActiveRide, RevenueLedger, AdminAudit, FarePolicy, RevenueShareSetting
 from .location_service import utcnow
 from .fare_service import DEFAULT_POLICY
 from .services import ApiError
@@ -70,6 +70,9 @@ def audit_detail(category,identifier):
         raise ApiError('Audit entry not found',404)
     if category=='driver':
         driver=repo.get(User,record.driver_id)
+        if record.action == 'driver.vehicle.updated' and record.details:
+            details=json.loads(record.details)
+            return dict(title='Driver vehicle details',subject=f'{driver.name} · {driver.user_code}' if driver else 'Driver account',changes=[{'field':label,'before':(details['before'] or {}).get(key) or 'Not provided','after':details['after'][key]} for key,label in [('registration','Car number'),('model','Car model'),('color','Colour')]])
         title,before,after = {'driver.approved':('Driver approval','pending','active'),'driver.suspended':('Driver suspension','active','suspended'),'driver.reinstated':('Driver reinstatement','suspended','active')}.get(record.action,('Driver status change','unknown','unknown'))
         return dict(title=title,subject=f'{driver.name} · {driver.user_code}' if driver else 'Driver account',changes=[dict(field='Account status',before=(record.before_status or before).capitalize(),after=(record.after_status or after).capitalize())])
     if category=='revenue':
@@ -165,3 +168,46 @@ def driver_list(params):
         items.append(driver.public() | {'location':location_public(repo.get(DriverLocation,driver.id)),
             'active_ride':{'id':ride.id,'status':ride.status} if ride else None})
     return dict(page=page,page_size=20,total=total,items=items)
+
+
+def save_driver_vehicle(actor, driver_id, data):
+    import re
+    driver=repo.get(User,driver_id)
+    if not driver or driver.role!='driver':
+        raise ApiError('Driver not found',404)
+    version=data.get('version')
+    if type(version) is not int or version<0:
+        raise ApiError('A valid vehicle version is required')
+    def text_value(key,limit):
+        value=data.get(key)
+        if not isinstance(value,str) or not 1<=len(value.strip())<=limit:
+            raise ApiError(f'{key.capitalize()} must contain 1–{limit} characters')
+        return ' '.join(value.split())
+    registration=text_value('registration',20).upper()
+    if not re.fullmatch(r'[A-Z0-9][A-Z0-9 -]{3,19}',registration):
+        raise ApiError('Car number must contain 4–20 letters, numbers, spaces or hyphens')
+    model=text_value('model',80)
+    color=text_value('color',40)
+    reason=text_value('reason',300)
+    # Serialize vehicle edits with assignment and driver reviews.
+    db.session.execute(update(User).where(User.id==driver_id,User.role=='driver').values(status_revision=User.status_revision))
+    db.session.refresh(driver)
+    if driver.status=='disabled':
+        raise ApiError('Disabled driver accounts require a separate review',409)
+    if repo.get(ActiveRide,driver_id):
+        raise ApiError('Vehicle details cannot change during an active trip',409)
+    vehicle=repo.get(DriverVehicle,driver_id)
+    before=vehicle.public() if vehicle else None
+    current=vehicle.version if vehicle else 0
+    if current!=version:
+        raise ApiError('Vehicle details changed. Reload drivers and review again',409)
+    if not vehicle:
+        vehicle=repo.add(DriverVehicle(driver_id=driver_id))
+    vehicle.registration,vehicle.model,vehicle.color=registration,model,color
+    vehicle.version=version+1
+    after=vehicle.public()
+    repo.add(AdminAudit(id=str(uuid4()),admin_id=actor.id,driver_id=driver_id,action='driver.vehicle.updated',reason=reason,
+        created_at=utcnow(),details=json.dumps({'before':before,'after':after})))
+    repo.notify(driver_id)
+    repo.commit()
+    return driver.public()

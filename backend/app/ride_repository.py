@@ -52,11 +52,11 @@ def transition(ride_id, old, new, **values):
     return db.session.execute(update(Ride).where(Ride.id == ride_id, Ride.status == old).values(status=new, **values).execution_options(synchronize_session=False)).rowcount == 1
 
 
-def assign(ride_id, driver_id, now):
+def assign(ride_id, driver_id, now, vehicle=None):
     cutoff = now - timedelta(seconds=current_app.config['LOCATION_STALE_SECONDS'])
     valid_invitation = select(Invitation.ride_id).where(Invitation.driver_id == driver_id, Invitation.status == 'PENDING', Invitation.expires_at > now)
     eligible = select(DriverPresence.driver_id).join(User, User.id == DriverPresence.driver_id).join(DriverLocation, DriverLocation.driver_id == User.id).where(DriverPresence.driver_id == driver_id, DriverPresence.available.is_(True), User.status == 'active', DriverLocation.fresh.is_(True), DriverLocation.recorded_at > cutoff, DriverLocation.updated_at > cutoff).exists()
-    return db.session.execute(update(Ride).where(Ride.id == ride_id, Ride.status == 'SEARCHING', Ride.expires_at > now, Ride.id.in_(valid_invitation), eligible).values(status='ASSIGNED', driver_id=driver_id).execution_options(synchronize_session=False)).rowcount == 1
+    return db.session.execute(update(Ride).where(Ride.id == ride_id, Ride.status == 'SEARCHING', Ride.expires_at > now, Ride.id.in_(valid_invitation), eligible).values(status='ASSIGNED', driver_id=driver_id, vehicle_registration=vehicle.registration if vehicle else None, vehicle_model=vehicle.model if vehicle else None, vehicle_color=vehicle.color if vehicle else None).execution_options(synchronize_session=False)).rowcount == 1
 
 
 def release(ride_id):

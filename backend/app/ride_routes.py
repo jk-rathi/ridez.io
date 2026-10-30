@@ -153,3 +153,10 @@ def reinstate_driver(driver_id):
 def trip_map(ride_id):
     from .trip_map_service import trip_map as load_map
     return jsonify(map=load_map(g.user, ride_id))
+
+
+@api.put('/admin/drivers/<int:driver_id>/vehicle')
+@authenticated('admin')
+def update_driver_vehicle(driver_id):
+    from .admin_service import save_driver_vehicle
+    return jsonify(user=save_driver_vehicle(g.user, driver_id, body()))
