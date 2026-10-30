@@ -36,6 +36,9 @@ def create_app(config=None):
     app.config.setdefault('GOOGLE_MAPS_SERVER_KEY', os.getenv('GOOGLE_MAPS_SERVER_KEY', ''))
     if app.config['ROUTE_PROVIDER'] not in ('google', 'simulator'):
         raise RuntimeError('ROUTE_PROVIDER must be google or simulator')
+    app.config.setdefault('AUTH_COOKIE_SECURE', not development)
+    app.config.setdefault('AUTH_TRUSTED_ORIGINS', [value.strip().rstrip('/') for value in os.getenv('AUTH_TRUSTED_ORIGINS', '').split(',') if value.strip()])
+    app.config.setdefault('REFRESH_SESSION_DAYS', 30)
     app.config.setdefault('LOCATION_STALE_SECONDS', 90)
     app.config.setdefault('MATCH_ROUND_SECONDS', 30)
     app.config.setdefault('MATCH_MAX_RADIUS_M', int(os.getenv('MATCH_MAX_RADIUS_M', '5000')))

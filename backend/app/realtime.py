@@ -1,11 +1,11 @@
 import time
 from datetime import timedelta
-import jwt
 from flask import current_app, request
 from flask_socketio import SocketIO, join_room
 from sqlalchemy import select, delete
 from . import db
 from .models import User, OutboxEvent
+from .services import ApiError
 from .location_service import utcnow
 
 socketio = SocketIO(async_mode='threading', logger=False, engineio_logger=False)
@@ -20,13 +20,11 @@ def init_realtime(app):
         try:
             if not isinstance(auth, dict) or not isinstance(auth.get('token'), str):
                 return False
-            payload = jwt.decode(auth['token'], current_app.config['JWT_SECRET'], algorithms=['HS256'], options={'require': ['sub', 'iat', 'exp']})
-            user = db.session.get(User, int(payload['sub']))
-            if not user or user.status == 'disabled':
-                return False
-        except (jwt.InvalidTokenError, ValueError, TypeError):
+            from .session_service import authenticate
+            user, payload = authenticate(auth['token'])
+        except ApiError:
             return False
-        current_app.extensions['ride_connections'][request.sid] = (user.id, payload['exp'])
+        current_app.extensions['ride_connections'][request.sid] = (user.id, payload['exp'], payload['sid'])
         join_room(f'user:{user.id}')
         if user.role == 'admin':
             join_room('admins')
@@ -36,13 +34,18 @@ def init_realtime(app):
         current_app.extensions['ride_connections'].pop(request.sid, None)
 
 
-def dispatch():
+def disconnect_invalid():
     # Recheck access before sending: expired/disabled sessions must not stay subscribed.
-    for sid, (user_id, expires) in list(current_app.extensions['ride_connections'].items()):
+    from .session_service import valid_session
+    for sid, (user_id, expires, session_id) in list(current_app.extensions['ride_connections'].items()):
         user = db.session.get(User, user_id)
-        if expires <= time.time() or not user or user.status == 'disabled':
+        if expires <= time.time() or not user or user.status == 'disabled' or not valid_session(session_id, user_id):
             socketio.server.disconnect(sid)
             current_app.extensions['ride_connections'].pop(sid, None)
+
+
+def dispatch():
+    disconnect_invalid()
     events = db.session.scalars(select(OutboxEvent).where(OutboxEvent.delivered_at.is_(None)).order_by(OutboxEvent.created_at).limit(200)).all()
     for event in events:
         # Event IDs support deduplication. Fetch canonical state after any reconnect.

@@ -137,8 +137,8 @@ def test_expired_socket_token_rejected_and_existing_socket_disconnected(app,acto
     client=socketio.test_client(app,auth={'token':actors['rider']['headers']['Authorization'][7:]})
     assert client.is_connected()
     with app.app_context():
-        for sid,(user_id,_) in app.extensions['ride_connections'].items():
-            app.extensions['ride_connections'][sid]=(user_id,0)
+        for sid,(user_id,_,session_id) in app.extensions['ride_connections'].items():
+            app.extensions['ride_connections'][sid]=(user_id,0,session_id)
         dispatch()
     assert not client.is_connected()
 

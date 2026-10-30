@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, Link, NavLink, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, ArrowRight, MapPin, Navigation, ShieldCheck, Clock3, CarFront, LayoutDashboard, Route as RouteIcon, Wallet, LogOut, ChevronRight, Menu, X, UserRound, Radio, CircleHelp } from 'lucide-react';
 import './styles.css';
 import { api } from './api';
+import { currentSession, subscribeSession, refreshSession, signIn, signOut } from './authSession';
 import RideWorkspace from './RideWorkspace';
 import FareSettings from './FareSettings';
 import RevenueSettings from './RevenueSettings';
@@ -11,10 +12,29 @@ import AdminAudit from './AdminAudit';
 
 const Auth = createContext(null);
 function AuthProvider({ children }) {
-  // Access tokens stay in memory. Reload requires login until rotating refresh sessions ship.
-  const [session, setSession] = useState(null);
-  return <Auth.Provider value={{ session, setSession }}>{children}</Auth.Provider>;
+  const [session,setSession]=useState(currentSession),[ready,setReady]=useState(false),[restoreError,setRestoreError]=useState(''),[signingOut,setSigningOut]=useState(false),[logoutError,setLogoutError]=useState('');
+  async function restore(){setRestoreError('');setReady(false);try{await refreshSession();}catch(error){setRestoreError(error.message);}finally{setReady(true);}}
+  useEffect(()=>{
+    const unsubscribe=subscribeSession(value=>{setSession(value);setReady(true);setRestoreError('');});
+    let alive=true;
+    refreshSession().catch(error=>{if(alive)setRestoreError(error.message);}).finally(()=>{if(alive)setReady(true);});
+    return ()=>{alive=false;unsubscribe();};
+  },[]);
+  useEffect(()=>{
+    if(!session)return;
+    let timer,stopped=false;
+    async function renew(){try{await refreshSession();}catch{if(!stopped)timer=setTimeout(renew,15000);}}
+    timer=setTimeout(renew,Math.max(1000,(session.expires_at*1000-Date.now())-60000));
+    return ()=>{stopped=true;clearTimeout(timer);};
+  },[session?.access_token]);
+  async function logout(allDevices=false){
+    setSigningOut(true);setLogoutError('');
+    try{await signOut(allDevices);}catch(error){setLogoutError(error.message);}finally{setSigningOut(false);}
+  }
+  return <Auth.Provider value={{session,ready,restoreError,retryRestore:restore,logout,signingOut,logoutError}}>{children}</Auth.Provider>;
 }
+function SessionLoading(){return <main className="session-loading"><Brand/><p role="status">Restoring your session…</p></main>;}
+
 function Brand() { return <Link className="brand" to="/">ridez<span>✳</span></Link>; }
 function Tag({ children }) { return <span className="tag"><span />{children}</span>; }
 function Landing() {
@@ -29,7 +49,7 @@ function CityMap({ hero = false }) {
 }
 function AuthPage({ register = false }) {
   const navigate = useNavigate();
-  const { setSession } = useContext(Auth);
+  const { session,ready,restoreError,retryRestore } = useContext(Auth);
   const [role, setRole] = useState(new URLSearchParams(window.location.search).get('role') === 'driver' ? 'driver' : 'rider');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [created, setCreated] = useState(null);
   async function submit(event) {
@@ -40,27 +60,33 @@ function AuthPage({ register = false }) {
         const data = await api('/auth/register', { method: 'POST', body: JSON.stringify({ ...fields, role }) });
         setCreated(data.user);
       } else {
-        const data = await api('/auth/login', { method: 'POST', body: JSON.stringify(fields) });
-        setSession(data); navigate(`/${data.user.role}`, { replace: true });
+        const data = await signIn(fields);
+        navigate(`/${data.user.role}`, { replace: true });
       }
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
-  return <div className="auth-layout"><aside><Brand/><div><Tag>LET’S GET YOU THERE</Tag><h1>A good day<br/>starts with<br/><span>a little go.</span></h1><p>Your city is waiting. Make it yours.</p></div><small>YOUR CITY. YOUR PLANS. YOUR RIDE.</small></aside><main className="auth-main"><Link className="back-link" to="/">← Back to home</Link><div className="auth-card" key={register ? 'register' : 'login'}>{created ? <><span className="success-icon"><ShieldCheck size={32}/></span><Tag>YOU’RE PART OF RIDEZ</Tag><h2>Nice to meet you,<br/>{created.name}.</h2><p>Your permanent account code</p><div className="account-code">{created.user_code}</div>{created.role === 'driver' && <p className="notice">Your driver application is pending approval. You can sign in to view your workspace.</p>}<Link className="button dark full" to="/login">Continue to sign in <ArrowRight size={18}/></Link></> : <><Tag>{register ? 'YOUR NEXT MOVE' : 'GOOD TO SEE YOU AGAIN'}</Tag><h2>{register ? 'Let’s get started.' : 'Welcome back.'}</h2><p>{register ? 'A few details, and you’re on your way.' : 'Sign in to pick up where you left off.'}</p>{register && <div className="role-tabs"><button type="button" className={role === 'rider' ? 'selected' : ''} onClick={()=>setRole('rider')}><UserRound size={17}/> I want to ride</button><button type="button" className={role === 'driver' ? 'selected' : ''} onClick={()=>setRole('driver')}><CarFront size={17}/> I want to drive</button></div>}<form onSubmit={submit}>{register && <label>Full name<input name="name" autoComplete="name" required maxLength={100} placeholder="Your name"/></label>}<label>Mobile number<input name="mobile" type="tel" autoComplete="tel" required placeholder="+91 98765 43210"/><small>Include your country code, e.g. +91.</small></label><label>Password<input name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} required minLength={register ? 10 : 1} maxLength={128} placeholder={register ? 'At least 10 characters' : 'Enter your password'}/></label>{error && <div className="form-error" role="alert">{error}</div>}<button className="button dark full" disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}<ArrowRight size={18}/></button></form><div className="auth-switch">{register ? 'Already going places?' : 'New around here?'} <Link to={register ? '/login' : '/register'}>{register ? 'Sign in' : 'Create an account'}</Link></div><div className="auth-security"><ShieldCheck size={15}/> Mobile + password. No OTP required.</div></>}</div></main></div>;
+  if(!ready)return <SessionLoading/>;
+  if(session)return <Navigate to={`/${session.user.role}`} replace/>;
+  return <div className="auth-layout"><aside><Brand/><div><Tag>LET’S GET YOU THERE</Tag><h1>A good day<br/>starts with<br/><span>a little go.</span></h1><p>Your city is waiting. Make it yours.</p></div><small>YOUR CITY. YOUR PLANS. YOUR RIDE.</small></aside><main className="auth-main"><Link className="back-link" to="/">← Back to home</Link><div className="auth-card" key={register ? 'register' : 'login'}>{created ? <><span className="success-icon"><ShieldCheck size={32}/></span><Tag>YOU’RE PART OF RIDEZ</Tag><h2>Nice to meet you,<br/>{created.name}.</h2><p>Your permanent account code</p><div className="account-code">{created.user_code}</div>{created.role === 'driver' && <p className="notice">Your driver application is pending approval. You can sign in to view your workspace.</p>}<Link className="button dark full" to="/login">Continue to sign in <ArrowRight size={18}/></Link></> : <><Tag>{register ? 'YOUR NEXT MOVE' : 'GOOD TO SEE YOU AGAIN'}</Tag><h2>{register ? 'Let’s get started.' : 'Welcome back.'}</h2><p>{register ? 'A few details, and you’re on your way.' : 'Sign in to pick up where you left off.'}</p>{register && <div className="role-tabs"><button type="button" className={role === 'rider' ? 'selected' : ''} onClick={()=>setRole('rider')}><UserRound size={17}/> I want to ride</button><button type="button" className={role === 'driver' ? 'selected' : ''} onClick={()=>setRole('driver')}><CarFront size={17}/> I want to drive</button></div>}{restoreError && <div className="form-error" role="alert">{restoreError} <button type="button" className="text-link" onClick={retryRestore}>Retry restoring session</button></div>}<form onSubmit={submit}>{register && <label>Full name<input name="name" autoComplete="name" required maxLength={100} placeholder="Your name"/></label>}<label>Mobile number<input name="mobile" type="tel" autoComplete="tel" required placeholder="+91 98765 43210"/><small>Include your country code, e.g. +91.</small></label><label>Password<input name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} required minLength={register ? 10 : 1} maxLength={128} placeholder={register ? 'At least 10 characters' : 'Enter your password'}/></label>{error && <div className="form-error" role="alert">{error}</div>}<button className="button dark full" disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}<ArrowRight size={18}/></button></form><div className="auth-switch">{register ? 'Already going places?' : 'New around here?'} <Link to={register ? '/login' : '/register'}>{register ? 'Sign in' : 'Create an account'}</Link></div><div className="auth-security"><ShieldCheck size={15}/> Mobile + password. No OTP required.</div></>}</div></main></div>;
 }
 function Protected({ role }) {
-  const { session } = useContext(Auth);
+  const { session,ready,restoreError,retryRestore } = useContext(Auth);
+  if(!ready)return <SessionLoading/>;
+  if(restoreError && !session)return <main className="session-loading"><Brand/><p role="alert">{restoreError}</p><button className="button dark" onClick={retryRestore}>Retry restoring session</button><Link to="/login">Sign in again</Link></main>;
   if (!session) return <Navigate to="/login" replace/>;
   if (session.user.role !== role) return <Navigate to={`/${session.user.role}`} replace/>;
   return <Workspace role={role}/>;
 }
 const navItems = { rider: [['', 'Overview', LayoutDashboard], ['/history','Your rides',RouteIcon], ['/account','Your account',UserRound]], driver: [['','Overview',LayoutDashboard], ['/history','Trip history',RouteIcon], ['/earnings','Earnings',Wallet], ['/account','Your account',UserRound]], admin: [['','Overview',LayoutDashboard], ['/drivers','Drivers',CarFront], ['/rides','Rides',RouteIcon], ['/settings','Fare settings',Menu], ['/revenue','Revenue share',Wallet], ['/audit','Audit history',ShieldCheck], ['/account','Your account',UserRound]] };
 function Workspace({ role }) {
-  const { session, setSession } = useContext(Auth), [open, setOpen] = useState(false);
+  const { session,logout,signingOut,logoutError } = useContext(Auth), [open, setOpen] = useState(false);
   const user = session.user;
-  return <div className="workspace"><aside className={`sidebar ${open ? 'open' : ''}`}><Brand/><div className="workspace-label">{role} workspace</div><nav>{navItems[role].map(([path,label,Icon])=><NavLink end key={path} to={`/${role}${path}`} onClick={()=>setOpen(false)}><Icon size={19}/>{label}<ChevronRight size={14}/></NavLink>)}</nav><div className="sidebar-bottom"><div><span className="avatar">{user.name.slice(0,1).toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.user_code}</small></div></div><button onClick={async()=>{try{if(user.role === 'driver')await api('/driver/availability',{token:session.access_token,method:'POST',body:JSON.stringify({available:false})});}catch{/* An active trip is preserved; local tracking stops on unmount. */}finally{setSession(null);}}}><LogOut size={18}/> Sign out</button></div></aside><div className="workspace-main"><header className="workspace-header"><button className="mobile-menu" aria-label="Toggle navigation" onClick={()=>setOpen(!open)}>{open ? <X/> : <Menu/>}</button><span>LET’S MAKE MOVES</span><div><span className="dev-dot"/> Development <span className="avatar small">{user.name.slice(0,1).toUpperCase()}</span></div></header><Routes><Route index element={<RideWorkspace role={role} user={user} token={session.access_token}/>}/>{['history','earnings','drivers','rides'].filter(view => role === 'admin' ? ['drivers','rides'].includes(view) : role === 'driver' ? ['history','earnings'].includes(view) : view === 'history').map(view=><Route key={view} path={view} element={<RideWorkspace role={role} user={user} token={session.access_token} view={view}/>}/>)}{role==='admin' && <Route path="settings" element={<FareSettings token={session.access_token}/>}/>}{role==='admin' && <Route path="revenue" element={<RevenueSettings token={session.access_token}/>}/>}{role==='admin' && <Route path="audit" element={<AdminAudit token={session.access_token}/>}/>}<Route path="account" element={<Account user={user}/>}/><Route path="*" element={<ComingSoon role={role}/>}/></Routes></div></div>;
+  return <div className="workspace"><aside className={`sidebar ${open ? 'open' : ''}`}><Brand/><div className="workspace-label">{role} workspace</div><nav>{navItems[role].map(([path,label,Icon])=><NavLink end key={path} to={`/${role}${path}`} onClick={()=>setOpen(false)}><Icon size={19}/>{label}<ChevronRight size={14}/></NavLink>)}</nav><div className="sidebar-bottom"><div><span className="avatar">{user.name.slice(0,1).toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.user_code}</small></div></div>{logoutError && <p className="form-error" role="alert">{logoutError} Sign-out was not confirmed. Please retry.</p>}<button disabled={signingOut} onClick={()=>logout()}><LogOut size={18}/> {signingOut?'Signing out…':'Sign out'}</button></div></aside><div className="workspace-main"><header className="workspace-header"><button className="mobile-menu" aria-label="Toggle navigation" onClick={()=>setOpen(!open)}>{open ? <X/> : <Menu/>}</button><span>LET’S MAKE MOVES</span><div><span className="dev-dot"/> Development <span className="avatar small">{user.name.slice(0,1).toUpperCase()}</span></div></header><Routes><Route index element={<RideWorkspace role={role} user={user} token={session.access_token}/>}/>{['history','earnings','drivers','rides'].filter(view => role === 'admin' ? ['drivers','rides'].includes(view) : role === 'driver' ? ['history','earnings'].includes(view) : view === 'history').map(view=><Route key={view} path={view} element={<RideWorkspace role={role} user={user} token={session.access_token} view={view}/>}/>)}{role==='admin' && <Route path="settings" element={<FareSettings token={session.access_token}/>}/>}{role==='admin' && <Route path="revenue" element={<RevenueSettings token={session.access_token}/>}/>}{role==='admin' && <Route path="audit" element={<AdminAudit token={session.access_token}/>}/>}<Route path="account" element={<Account user={user}/>}/><Route path="*" element={<ComingSoon role={role}/>}/></Routes></div></div>;
 }
 function PageHeading({ eyebrow, title, text }) { return <div className="page-heading"><Tag>{eyebrow}</Tag><h1>{title}</h1><p>{text}</p></div>; }
-function Account({ user }) { return <main className="dashboard"><PageHeading eyebrow="THE PERSON BEHIND THE JOURNEY" title="Your account." text="Your details, in one place."/><section className="account-panel">{[['Name',user.name],['Mobile',user.mobile],['Permanent code',user.user_code],['Workspace',user.role],['Account status',user.status]].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}<p>Profile editing and account recovery will be introduced in a later milestone.</p></section></main>; }
+function Account({ user }) {
+  const {logout,signingOut,logoutError}=useContext(Auth);
+  return <main className="dashboard"><PageHeading eyebrow="THE PERSON BEHIND THE JOURNEY" title="Your account." text="Your details, in one place."/><section className="account-panel">{[['Name',user.name],['Mobile',user.mobile],['Permanent code',user.user_code],['Workspace',user.role],['Account status',user.status]].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}<button className="button dark" disabled={signingOut} onClick={()=>{if(window.confirm('Sign out all devices, including this one?'))logout(true);}}>{signingOut?'Signing out…':'Sign out all devices'}</button>{logoutError && <p className="form-error" role="alert">{logoutError}</p>}<p>Profile editing and account recovery will be introduced in a later milestone.</p></section></main>; }
 function ComingSoon({ role }) { return <main className="dashboard"><PageHeading eyebrow="ONE STEP AT A TIME" title="More roads ahead." text="This part of your workspace is planned for an upcoming milestone."/><section className="empty-panel"><RouteIcon size={40}/><h2>We’re building the next chapter.</h2><p>No trips, payments, or operational changes have been made.</p><Link className="button dark" to={`/${role}`}>Back to overview <ArrowRight size={16}/></Link></section></main>; }
 function App() { return <AuthProvider><BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<AuthPage key="login"/>}/><Route path="/register" element={<AuthPage key="register" register/>}/>{['rider','driver','admin'].map(role=><Route key={role} path={`/${role}/*`} element={<Protected role={role}/>}/>)}<Route path="*" element={<main className="not-found"><Brand/><h1>Wrong turn?</h1><p>This page doesn’t exist. Let’s get you back on track.</p><Link to="/" className="button dark">Back to home <ArrowRight size={18}/></Link></main>}/></Routes></BrowserRouter></AuthProvider>; }
 createRoot(document.getElementById('root')).render(<React.StrictMode><App/></React.StrictMode>);

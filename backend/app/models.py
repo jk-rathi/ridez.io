@@ -167,3 +167,20 @@ class AdminAudit(db.Model):
     action = db.Column(db.String(40), nullable=False)
     reason = db.Column(db.String(300), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False)
+
+
+class AuthSession(db.Model):
+    __tablename__ = 'auth_sessions'
+    id = db.Column(db.String(36), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    revoked_at = db.Column(db.DateTime)
+
+
+class RefreshToken(db.Model):
+    __tablename__ = 'refresh_tokens'
+    token_hash = db.Column(db.String(64), primary_key=True)
+    session_id = db.Column(db.String(36), db.ForeignKey('auth_sessions.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime)

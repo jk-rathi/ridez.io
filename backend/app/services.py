@@ -1,8 +1,6 @@
 import base64
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
-import jwt
 import phonenumbers
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
@@ -74,9 +72,9 @@ def login(data):
     valid = check_password_hash(user.password_hash if user else fallback, password)
     if not user or not valid or user.status == 'disabled':
         raise ApiError('Mobile or password is incorrect', 401)
-    now = datetime.now(timezone.utc)
-    token = jwt.encode({'sub': str(user.id), 'iat': now, 'exp': now + timedelta(minutes=15)}, current_app.config['JWT_SECRET'], algorithm='HS256')
-    return {'access_token': token, 'expires_in': 900, 'user': user.public()}
+    from .session_service import issue
+    return issue(user)
+
 
 
 def rider_trip_otp(user):

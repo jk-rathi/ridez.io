@@ -13,7 +13,7 @@ def operation(summary, fields=None, protected=False, status='200'):
 
 SPEC = {
     'openapi': '3.0.3',
-    'info': {'title': 'ridez foundation API', 'version': '0.1.0', 'description': 'Mobile/password authentication and role-protected foundation. Tokens expire after 15 minutes. No refresh flow yet.'},
+    'info': {'title': 'ridez foundation API', 'version': '0.1.0', 'description': 'Mobile/password authentication and role-protected foundation. Access tokens expire after 15 minutes; a rotating HttpOnly cookie restores sessions for up to 30 days.'},
     'servers': [{'url': '/api/v1'}],
     'components': {'securitySchemes': {'bearerAuth': {'type': 'http', 'scheme': 'bearer', 'bearerFormat': 'JWT'}}, 'schemas': {'User': USER}},
     'paths': {
@@ -26,7 +26,7 @@ SPEC = {
     },
 }
 
-SPEC['info']['version'] = '0.6.0'
+SPEC['info']['version'] = '0.7.0'
 SPEC['info']['title'] = 'ridez routes, fares and matching API'
 SPEC['info']['description'] += ' Sample route fares; real GPS matching starts at 500 m and expands by 500 m every 30 seconds. Driver locations expire after 90 seconds. No live geocoding or payments. Socket.IO authenticates with auth.token and sends scoped workspace.changed invalidations; fetch /workspace on reconnect.'
 SPEC['paths'].update({
@@ -65,3 +65,13 @@ SPEC['paths']['/admin/drivers/{driver_id}/approve'] = {'parameters': [{'name': '
 SPEC['paths']['/rides/{ride_id}/start']['post'] = operation('Start the assigned waiting trip using the rider’s fixed six-digit OTP', ['otp'], protected=True)
 SPEC['paths']['/rides/{ride_id}/start']['post']['requestBody']['content']['application/json']['schema']['properties']['otp'] = {'type':'string','pattern':'^[0-9]{6}$','description':'Provided by the rider at pickup. Five failed attempts per driver per minute in the single-process development limiter.'}
 SPEC['paths']['/workspace']['get']['description'] = 'Rider workspaces include trip_otp, a fixed six-digit string for that account. Driver and admin responses never include this code.'
+
+SPEC['components']['securitySchemes']['refreshCookie'] = {'type':'apiKey','in':'cookie','name':'ridez_refresh'}
+for action, summary in [('refresh','Rotate the single-use refresh cookie and issue an access token'), ('logout','Revoke the current cookie session, disconnect its sockets and stop new driver requests'), ('logout-all','Revoke all sessions for the signed-in account')]:
+    endpoint = operation(summary, protected=action=='logout-all')
+    endpoint['parameters'] = [{'name':'X-Session-Request','in':'header','required':True,'schema':{'type':'string','enum':['1']}}]
+    endpoint['description'] = 'Send cookies on the same origin. Session endpoints reject cross-site browser origins. Logout preserves active trips. Refresh credentials are HttpOnly and never returned in JSON. Reusing an old refresh credential revokes its session.'
+    if action != 'logout-all':
+        endpoint['security'] = [{'refreshCookie':[]}]
+    SPEC['paths']['/auth/'+action] = {'post':endpoint}
+SPEC['paths']['/auth/login']['post']['description'] = 'Creates a revocable server session, returns access_token/expires_in/expires_at/user and sets an HttpOnly SameSite=Lax refresh cookie scoped to /api/v1/auth. Production cookies require HTTPS. Responses are not cached.'

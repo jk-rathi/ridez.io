@@ -93,7 +93,7 @@ Browser geolocation requires **HTTPS or localhost**. Allow site location access 
 
 The backend keeps only the latest driver location, not a tracking history. Ordinary users cannot write another driver's location or subscribe to arbitrary rooms. Admin views show freshness/accuracy without exposing precise location coordinates. Invitation/ride details are scoped to their participants and admins.
 
-Development defaults to SQLite and persists random local signing/code secrets under ignored `backend/instance/`. Never use these defaults as a production configuration. Access tokens remain in browser memory and expire after 15 minutes; reload/sign-out clears the client session. Refresh sessions and server-side logout revocation are still pending. The auth rate limiter is single-process development protection; replace it with shared Redis-backed limits before deployment.
+Development defaults to SQLite and persists random local signing/code secrets under ignored `backend/instance/`. Never use these defaults as a production configuration. Access tokens remain in browser memory and expire after 15 minutes. A rotating HttpOnly refresh cookie restores sign-in on reload for up to 30 days. Sign-out revokes the current server session; **Your account → Sign out all devices** revokes every session for that account. See [persistent sessions](docs/SESSIONS.md). The auth rate limiter is single-process development protection; replace it with shared Redis-backed limits before deployment.
 
 ## SQL Server and deployment
 
@@ -130,10 +130,12 @@ Revenue tests cover role restrictions, percentage bounds/sums, immediate/future 
 
 Privacy/admin tests verify rider settlement exclusion across API responses, preserved fare/driver details, driver/admin financial access, audit authorization/search/pagination, before/after values, live counters and stale-driver totals. Browser checks cover rider receipts/history (including defensive handling of a stale payload), driver earnings, audit filters/details and mobile layout.
 
-Remaining milestones include driver suspension/reinstatement and incident support, account recovery, refresh/revocation, cancellation policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
+Remaining milestones include driver suspension/reinstatement and incident support, account recovery, cancellation policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
 
 ### Fixed rider trip OTP
 
 Each rider sees a fixed six-digit OTP on their overview, including existing accounts. It remains the same across bookings, sign-ins and restarts. At pickup, the rider shares it with the assigned driver, who must enter it before starting a waiting trip. Missing or incorrect codes leave the trip waiting. Driver/admin API responses never include the code. Start retries require the same code and remain idempotent.
 
 Codes are derived with a separate HMAC domain from the rider account code and `USER_CODE_SECRET`; keep that secret stable, as required for existing account codes. No schema migration is needed. Failed OTP checks are limited to five per driver per minute in the single-process development runtime; production needs shared rate limiting. This is a reusable pickup PIN, not an SMS or expiring code.
+
+Session checks cover single-use refresh rotation, replay revocation, absolute expiry, disabled accounts, cross-origin/CSRF rejection, device-specific and all-device logout, socket disconnection, concurrent refresh, restart persistence and preserved driver assignments. The session migration adds two tables and preserves existing accounts; existing access tokens require a fresh sign-in after upgrading.

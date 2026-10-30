@@ -1,17 +1,27 @@
 from collections import defaultdict, deque
 from functools import wraps
 from time import monotonic
-import jwt
 from flask import Blueprint, current_app, g, jsonify, request
-from . import repositories as users
 from .services import ApiError, login, register
 
 api = Blueprint('api', __name__)
 
 
+@api.after_request
+def no_store(response):
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @api.errorhandler(ApiError)
 def api_error(error):
-    return jsonify(error=error.message), error.status
+    response = jsonify(error=error.message)
+    response.status_code = error.status
+    response.headers['Cache-Control'] = 'no-store'
+    if error.status == 401 and request.path.endswith(('/auth/refresh', '/auth/logout-all')):
+        from .session_service import cookie
+        cookie(response)
+    return response
 
 
 def body():
@@ -26,15 +36,10 @@ def authenticated(role=None):
         @wraps(fn)
         def wrapped(*args, **kwargs):
             header = request.headers.get('Authorization', '')
-            try:
-                if not header.startswith('Bearer '):
-                    raise ValueError()
-                payload = jwt.decode(header[7:], current_app.config['JWT_SECRET'], algorithms=['HS256'], options={'require': ['sub', 'exp', 'iat']})
-                g.user = users.by_id(int(payload['sub']))
-                if not g.user or g.user.status == 'disabled':
-                    raise ValueError()
-            except (jwt.InvalidTokenError, ValueError, TypeError):
+            from .session_service import authenticate
+            if not header.startswith('Bearer '):
                 raise ApiError('Please sign in again', 401)
+            g.user, g.auth_claims = authenticate(header[7:])
             if role and g.user.role != role:
                 raise ApiError('You do not have access to this workspace', 403)
             return fn(*args, **kwargs)
@@ -73,7 +78,10 @@ def registration():
 
 @api.post('/auth/login')
 def sign_in():
-    return jsonify(login(body()))
+    from .session_service import check_origin, cookie
+    check_origin(require_header=False)
+    data, token = login(body())
+    return cookie(jsonify(data), token)
 
 
 @api.get('/me')
@@ -106,3 +114,28 @@ def specification():
 @api.get('/docs')
 def docs():
     return '''<!doctype html><html lang="en"><head><title>ridez API</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"></head><body><div id="swagger"></div><script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url:'/api/v1/openapi.json',dom_id:'#swagger'})</script></body></html>'''
+
+
+@api.post('/auth/refresh')
+def refresh_session():
+    from .session_service import check_origin, refresh, cookie
+    check_origin()
+    data, token = refresh()
+    return cookie(jsonify(data), token)
+
+
+@api.post('/auth/logout')
+def logout_session():
+    from .session_service import check_origin, logout, cookie
+    check_origin()
+    logout()
+    return cookie(jsonify(status='signed_out'))
+
+
+@api.post('/auth/logout-all')
+@authenticated()
+def logout_all_sessions():
+    from .session_service import check_origin, logout, cookie
+    check_origin()
+    logout(g.user, all_devices=True)
+    return cookie(jsonify(status='signed_out_all_devices'))
