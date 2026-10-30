@@ -96,12 +96,14 @@ def ride_for_quote(quote_id):
     return db.session.scalar(select(Ride).where(Ride.quote_id == quote_id))
 
 
-def set_available(driver_id, available):
+def set_available(driver_id, available, resume_available=None):
     presence = get(DriverPresence, driver_id)
     if not presence:
         presence = add(DriverPresence(driver_id=driver_id, available=available))
     else:
         presence.available = available
+    if resume_available is not None:
+        presence.resume_available = resume_available
     return presence
 
 
@@ -111,3 +113,8 @@ def lock_active_driver(driver_id, require_available=False):
     if require_available:
         query = query.where(select(DriverPresence.driver_id).where(DriverPresence.driver_id==driver_id, DriverPresence.available.is_(True)).exists())
     return db.session.execute(query.values(status_revision=User.status_revision)).rowcount == 1
+
+
+def lock_driver(driver_id):
+    return db.session.execute(update(User).where(User.id==driver_id, User.role=='driver')
+        .values(status_revision=User.status_revision)).rowcount == 1

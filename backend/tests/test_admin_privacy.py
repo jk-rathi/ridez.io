@@ -50,13 +50,13 @@ def test_admin_metrics_use_live_state_and_private_allocation_totals(client,app,a
     prepare(client,actors,'second')
     data=client.get('/api/v1/workspace',headers=actors['admin']['headers']).json
     assert data['metrics']['completed_rides']==1 and data['metrics']['active_rides']==0
-    assert data['metrics']['fresh_available_drivers']==1
+    assert data['metrics']['fresh_available_drivers']==2
     assert Decimal(data['metrics']['driver_allocations'])==Decimal(completed['settlement']['driver_amount'])
     with app.app_context():
         db.session.get(DriverLocation,actors['second']['id']).recorded_at=utcnow()-timedelta(seconds=91)
         db.session.commit()
     metrics=client.get('/api/v1/workspace',headers=actors['admin']['headers']).json['metrics']
-    assert metrics['fresh_available_drivers']==0 and metrics['stale_available_drivers']==1
+    assert metrics['fresh_available_drivers']==1 and metrics['stale_available_drivers']==1
 
 
 def audit_data(client,actors,**params):

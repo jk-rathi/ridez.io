@@ -68,7 +68,7 @@ def test_full_ride_and_exactly_once_settlement(client, app, actors):
         assert db.session.scalar(select(func.count()).select_from(AdminAudit)) == 1
     workspace=client.get('/api/v1/workspace',headers=actors['driver']['headers']).json
     assert workspace['allocated_earnings'] == settlement['driver_amount']
-    assert workspace['available'] is False
+    assert workspace['available'] is True
     assert len(workspace['rides']) == 1
 
 
@@ -117,7 +117,7 @@ def test_permissions_and_pending_driver(client, actors):
     assert post(client,actors,'driver',f"/rides/{ride['id']}/accept").status_code == 200
     assert post(client,actors,'rider',f"/rides/{ride['id']}/complete").status_code == 403
     assert post(client,actors,'rider',f"/rides/{ride['id']}/cancel").status_code == 400
-    assert post(client,actors,'driver','/driver/availability',available=False).status_code == 409
+    assert post(client,actors,'driver','/driver/availability',available=False).status_code == 200
 
 
 def test_simulator_disabled(client, app, actors):

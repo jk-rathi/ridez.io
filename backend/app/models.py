@@ -27,6 +27,7 @@ class DriverPresence(db.Model):
     __tablename__ = 'driver_presence'
     driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     available = db.Column(db.Boolean, nullable=False, default=False)
+    resume_available = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
 
 
 class FareQuote(db.Model):

@@ -48,3 +48,5 @@ The migration adds a suspended driver status, status revisions and audit snapsho
 3. Repeat with a driver already assigned a ride. That ride stays assigned. Complete the normal pickup → rider OTP → trip → completion flow and check earnings.
 4. Reinstate the driver. They remain offline and must obtain a fresh location to go available. Their old invitations do not reappear.
 5. Inspect all three review actions in Audit history, including before/after values. Try a stale version or a non-admin API request; neither can change the driver's status.
+
+Normal completion now keeps active drivers available when they opted to remain online and have fresh GPS. Suspension and reinstatement still stop availability and clear that next-trip choice; finishing a suspended trip does not re-enable it. See [driver availability](DRIVER_AVAILABILITY.md).

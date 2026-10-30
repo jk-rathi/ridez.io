@@ -114,31 +114,32 @@ def book(user, data):
 
 def availability(user, data):
     expire()
-    if user.status != 'active':
-        raise ApiError('Your driver account is suspended' if user.status == 'suspended' else 'Admin approval is required before going available', 403)
     available = data.get('available')
     if not isinstance(available, bool):
         raise ApiError('Available must be true or false')
     if available:
         simulator()
-    if repo.get(ActiveRide, user.id):
-        raise ApiError('Complete your active trip before changing availability', 409)
     try:
-        if not repo.lock_active_driver(user.id):
+        locked = repo.lock_active_driver(user.id) if available else repo.lock_driver(user.id)
+        if not locked:
             repo.rollback()
-            raise ApiError('Your driver status changed. Refresh before going available', 403)
+            raise ApiError('Your driver status does not allow new requests', 403)
+        db.session.refresh(user)
+        from sqlalchemy import select, update
+        active = db.session.scalar(select(ActiveRide).where(ActiveRide.user_id==user.id))
         if available:
-            location_service.update(user, data, initializing=True)
-        repo.set_available(user.id, available)
+            location_service.update(user, data, initializing=not bool(active))
+        # Busy drivers stay unavailable until completion; persist their next-trip choice.
+        online = available and not bool(active)
+        repo.set_available(user.id, online, resume_available=available)
         if not available:
-            from sqlalchemy import update
             db.session.execute(update(Invitation).where(Invitation.driver_id == user.id, Invitation.status == 'PENDING').values(status='OFFLINE'))
         repo.notify(user.id)
         repo.commit()
     except IntegrityError:
         repo.rollback()
         raise ApiError('Availability changed concurrently. Refresh and retry', 409)
-    return dict(available=available)
+    return dict(available=online, resume_available=available, active_trip=bool(active))
 
 
 def accept(user, ride_id):
@@ -226,7 +227,7 @@ def move(user, ride_id, action, data=None):
             raise ApiError('Ride changed. Refresh and review before cancelling', 409)
         repo.close_invitations(ride.id, 'CLOSED')
         if ride.driver_id:
-            repo.set_available(ride.driver_id, False)
+            repo.set_available(ride.driver_id, False, resume_available=False)
         repo.release(ride.id)
         if previous_status == 'SEARCHING':
             matching.close_round(ride, 'CANCELLED')
@@ -243,6 +244,9 @@ def move(user, ride_id, action, data=None):
             return public(ride, user)
         if ride.status != old:
             raise ApiError(f'Cannot {action} a trip in {ride.status.lower()} state', 409)
+        if action == 'complete':
+            repo.lock_driver(user.id)
+            db.session.refresh(user)
         completed_at=now() if action=='complete' else None
         if not repo.transition(ride.id, old, new, **({'completed_at': completed_at} if action == 'complete' else {})):
             repo.rollback()
@@ -251,7 +255,14 @@ def move(user, ride_id, action, data=None):
             quoted = repo.get(FareQuote, ride.quote_id)
             revenue_service.allocate(ride,quoted,user.id,completed_at)
             repo.release(ride.id)
-            # End offline deliberately; driver chooses when to take another request.
+            from .models import DriverLocation
+            presence = repo.get(DriverPresence, user.id)
+            if presence:
+                db.session.refresh(presence)
+            eligible = (user.status == 'active' and bool(presence and presence.resume_available)
+                and location_service.is_fresh(repo.get(DriverLocation, user.id), completed_at)
+                and (current_app.config['ROUTE_PROVIDER'] == 'google' or current_app.config['SIMULATOR_ENABLED']))
+            repo.set_available(user.id, eligible)
     repo.notify_ride(ride)
     repo.commit()
     db.session.expire_all()
@@ -280,7 +291,7 @@ def snapshot(user):
             from sqlalchemy import select
             review = db.session.scalar(select(AdminAudit).where(AdminAudit.driver_id==user.id, AdminAudit.action=='driver.suspended', AdminAudit.status_revision==user.status_revision))
             result['suspension'] = {'reason':review.reason,'created_at':review.created_at.isoformat()+'Z'} if review else None
-        result.update(available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and result['location']['fresh'] and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
+        result.update(resume_available=bool(presence and presence.resume_available), available=bool(presence and presence.available), invitations=[public(ride, user, invitation=True) for ride in repo.invitations(user.id)] if user.status == 'active' and presence and presence.available and result['location']['fresh'] and not active else [], earnings=[entry.public() for entry in entries], allocated_earnings=str(money(sum((entry.driver_amount for entry in entries), Decimal(0)))))
     if user.role == 'admin':
         from .admin_service import metrics
         from .models import DriverLocation

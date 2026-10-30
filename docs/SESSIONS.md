@@ -46,3 +46,5 @@ Restart the frontend with `npm.cmd run dev` on Windows or `npm run dev` elsewher
 - Driver logout closes pending invitations and stops availability; it does not release an active ride or change a trip state. Other driver sessions refresh authoritative state through the existing notifications and reconciliation.
 
 Automated backend tests use SQLite. They do not establish SQL Server concurrency behavior. Production still needs shared rate limiting, a shared Socket.IO broker, worker supervision, session-data retention maintenance and SQL Server integration checks.
+
+Driver logout also clears the persisted stay-available-after-trip choice. Completing an already assigned trip from another valid session cannot silently undo that choice.

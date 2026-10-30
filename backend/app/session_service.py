@@ -94,7 +94,9 @@ def authenticate(token):
 def stop_requests(user_id):
     user = db.session.get(User, user_id)
     if user and user.role == 'driver':
-        db.session.execute(update(DriverPresence).where(DriverPresence.driver_id==user_id).values(available=False))
+        from .ride_repository import lock_driver
+        lock_driver(user_id)
+        db.session.execute(update(DriverPresence).where(DriverPresence.driver_id==user_id).values(available=False, resume_available=False))
         db.session.execute(update(Invitation).where(Invitation.driver_id==user_id, Invitation.status=='PENDING').values(status='CLOSED'))
         from .ride_repository import notify
         notify(user_id)
