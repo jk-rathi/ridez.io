@@ -146,3 +146,10 @@ def suspend_driver(driver_id):
 def reinstate_driver(driver_id):
     from .admin_service import change_driver_status
     return jsonify(user=change_driver_status(g.user, driver_id, 'reinstate', body()))
+
+
+@api.get('/rides/<ride_id>/map')
+@authenticated()
+def trip_map(ride_id):
+    from .trip_map_service import trip_map as load_map
+    return jsonify(map=load_map(g.user, ride_id))

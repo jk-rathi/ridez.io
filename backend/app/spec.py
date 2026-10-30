@@ -89,3 +89,6 @@ SPEC['info']['version'] = '0.8.0'
 
 SPEC['paths']['/ready'] = {'get':operation('Read deployment readiness: current migration head and live matching loop')}
 SPEC['paths']['/ready']['get']['responses']['503'] = {'description':'Database schema or matching worker is not ready'}
+
+SPEC['paths']['/rides/{ride_id}/map'] = {'parameters':[{'name':'ride_id','in':'path','required':True,'schema':{'type':'string'}}], 'get':operation('Read the active Google road route and fresh driver position (rider or assigned driver only)',protected=True)}
+SPEC['paths']['/rides/{ride_id}/map']['get']['description'] = 'Google rides only. Before start, returns the pickup-to-destination route. In progress, uses fresh driver GPS as origin; otherwise explicitly falls back to the pickup route without a driver marker. Road geometry is cached in memory for 60 seconds and shared between participants; location metadata refreshes per request. No fare changes. Driver coordinates are excluded after completion/cancellation and from admin/unrelated-user access. Google errors are returned without simulated geometry.'
