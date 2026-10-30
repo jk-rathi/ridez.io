@@ -44,8 +44,12 @@ def create_app(config=None):
     app.config.setdefault('MATCH_MAX_RADIUS_M', int(os.getenv('MATCH_MAX_RADIUS_M', '5000')))
     if app.config['MATCH_MAX_RADIUS_M'] not in range(500, 10001, 500):
         raise RuntimeError('MATCH_MAX_RADIUS_M must be a multiple of 500 between 500 and 10000')
-    if not all(app.config.get(k) for k in ('SQLALCHEMY_DATABASE_URI', 'JWT_SECRET', 'USER_CODE_SECRET')):
-        raise RuntimeError('DATABASE_URL, JWT_SECRET and USER_CODE_SECRET are required outside development')
+    required = {'DATABASE_URL':'SQLALCHEMY_DATABASE_URI', 'JWT_SECRET':'JWT_SECRET', 'USER_CODE_SECRET':'USER_CODE_SECRET'}
+    missing = [name for name, key in required.items()
+               if not app.config.get(key) or (isinstance(app.config[key], str) and not app.config[key].strip())]
+    if missing:
+        raise RuntimeError('Missing required environment variables: ' + ', '.join(missing)
+                           + '. Set these in Render service > Environment (or your runtime environment), then redeploy.')
     if not development:
         for key in ('JWT_SECRET', 'USER_CODE_SECRET'):
             if len(app.config[key]) < 32:

@@ -73,3 +73,18 @@ def test_render_proxy_secure_cookie_origin_and_headers(monkeypatch):
         bad=client.post('/api/v1/auth/login',base_url='http://ridez-test.onrender.com',headers={'X-Forwarded-Proto':'https','Origin':'https://evil.example'},json={})
         assert bad.status_code==403
     with app.app_context():db.drop_all()
+
+
+@pytest.mark.parametrize('missing_config,expected',[
+    ({'SQLALCHEMY_DATABASE_URI':None},['DATABASE_URL']),
+    ({'JWT_SECRET':''},['JWT_SECRET']),
+    ({'USER_CODE_SECRET':'   '},['USER_CODE_SECRET']),
+    ({'SQLALCHEMY_DATABASE_URI':'','JWT_SECRET':'','USER_CODE_SECRET':''},['DATABASE_URL','JWT_SECRET','USER_CODE_SECRET']),
+])
+def test_missing_production_settings_name_only_missing_variables(monkeypatch,missing_config,expected):
+    with pytest.raises(RuntimeError) as error:
+        production(monkeypatch,**missing_config)
+    message=str(error.value)
+    assert message.startswith('Missing required environment variables: '+', '.join(expected)+'.')
+    assert 'Render service > Environment' in message
+    assert 'production-jwt-test-only' not in message and 'production-code-test-only' not in message

@@ -73,3 +73,26 @@ python deploy/smoke.py --image ridez:local
 ```
 
 The smoke test creates its own temporary database volume and random test secrets, checks the actual production image, restarts it, verifies login/OTP persistence and logout revocation, then removes only its own test container and volume. In the managed cloud environment, builds use its required proxy/CA settings; normal Render builds use their platform trust store. CI runs the backend tests, frontend build, Docker build and image smoke test without Google credentials.
+
+## Startup error: missing DATABASE_URL / JWT_SECRET / USER_CODE_SECRET
+
+A manually created Docker Web Service does not automatically import `render.yaml`. Blueprint environment variables apply when the service is created/synchronized through a Blueprint; adding that file to Git alone does not configure an existing manual service.
+
+Open the existing Render **Web Service → Environment** and add any missing settings:
+
+| Key | Value |
+| --- | --- |
+| `APP_ENV` | `production` |
+| `DATABASE_URL` | `sqlite:////var/data/ridez.db` for this guide's persistent SQLite setup |
+| `JWT_SECRET` | A securely generated random secret of at least 32 characters |
+| `USER_CODE_SECRET` | A different securely generated random secret of at least 32 characters |
+
+For a new installation, generate two values on your own computer with:
+
+```sh
+python -c "import secrets; print(secrets.token_hex(32)); print(secrets.token_hex(32))"
+```
+
+Paste them into the two secret environment fields in Render, not into Git or chat. If these secrets already exist for an installation you are retaining, restore their existing values instead of generating replacements. Keep `APP_ENV=production`.
+
+Confirm the service has a persistent disk mounted at `/var/data`, then save the environment changes and deploy/redeploy. These are runtime service settings, not frontend variables; do not add a `VITE_` prefix. The latest startup error lists only the missing variable names, never their values. The Google keys and other settings in the guide are still required for live routing.
