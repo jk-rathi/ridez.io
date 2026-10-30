@@ -55,12 +55,19 @@ def main():
             cookie=headers['Set-Cookie'].split(';')[0]
             assert 'HttpOnly' in headers['Set-Cookie'] and 'Secure' in headers['Set-Cookie']
             authorization={'Authorization':'Bearer '+login['access_token']}
+            _,quote,_=request('/api/v1/fares/quotes',{'pickup':'Smoke pickup','destination':'Smoke destination','pickup_lat':19.076,'pickup_lng':72.8777},authorization)
+            _,booked,_=request('/api/v1/rides',{'quote_id':json.loads(quote)['quote']['id']},authorization)
+            ride_id=json.loads(booked)['ride']['id']
+            _,cancelled,_=request('/api/v1/rides/'+ride_id+'/cancel',{'reason':'Deployment cancellation check'},authorization)
+            assert json.loads(cancelled)['ride']['cancellation']['reason']=='Deployment cancellation check'
             _,data,_=request('/api/v1/workspace',headers=authorization)
             otp=json.loads(data)['trip_otp']
             docker('restart',name,stdout=subprocess.DEVNULL)
             ready()
             _,data,_=request('/api/v1/workspace',headers=authorization)
             assert json.loads(data)['trip_otp']==otp
+            assert json.loads(data)['active_ride'] is None
+            assert json.loads(data)['rides'][0]['cancellation']['reason']=='Deployment cancellation check'
             _,renewed,headers=request('/api/v1/auth/refresh',{}, {'Cookie':cookie,'X-Session-Request':'1'})
             renewed=json.loads(renewed)
             assert renewed['user']['id']==json.loads(created)['user']['id']
@@ -71,7 +78,7 @@ def main():
                 raise AssertionError('Logged-out token was accepted')
             except urllib.error.HTTPError as error:
                 assert error.code==401
-            print('PASS: production image, migrations, frontend, readiness, secure cookies, restart persistence and logout')
+            print('PASS: production image, migrations, frontend, readiness, secure cookies, restart persistence, cancellation and logout')
         finally:
             subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             subprocess.run(['docker','volume','rm',volume],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

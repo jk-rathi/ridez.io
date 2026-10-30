@@ -55,7 +55,7 @@ Use SQL Server-compatible migrations and integration tests. SQLite is not suffic
 
 ## Ride and driver rules
 
-Ride states: SEARCHING → ASSIGNED → ARRIVING → WAITING → IN_PROGRESS → COMPLETED. SEARCHING may terminate as CANCELLED or NO_DRIVER_FOUND. Pre-trip cancellation must be server-authorized and resolve invitations/driver state. Mid-trip interruption is an incident workflow, not an unrestricted cancellation button.
+Ride states: SEARCHING → ASSIGNED → ARRIVING → WAITING → IN_PROGRESS → COMPLETED. SEARCHING may terminate as CANCELLED or NO_DRIVER_FOUND; ASSIGNED, ARRIVING and WAITING may terminate as CANCELLED by the rider or assigned driver with a recorded reason. Pre-trip cancellation must be server-authorized and resolve invitations/driver state. Mid-trip interruption is an incident workflow, not an unrestricted cancellation button.
 
 Driver states: OFFLINE → AVAILABLE → RIDE_REQUESTED → RIDE_ACCEPTED → ARRIVING_AT_PICKUP → WAITING_FOR_RIDER → ONGOING_RIDE → RIDE_COMPLETED → AVAILABLE/OFFLINE. Include TEMPORARILY_UNAVAILABLE and SUSPENDED with explicit transition guards. Pending invitations are separate records; ending one invitation must not make a driver available while another active assignment exists.
 

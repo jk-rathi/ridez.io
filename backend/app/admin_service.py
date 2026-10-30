@@ -21,7 +21,7 @@ def metrics():
     available=db.session.scalar(select(func.count()).select_from(online.subquery()))
     fresh=db.session.scalar(select(func.count()).select_from(online.join(DriverLocation,DriverLocation.driver_id==DriverPresence.driver_id).where(DriverLocation.fresh.is_(True),DriverLocation.recorded_at>cutoff,DriverLocation.updated_at>cutoff).subquery()))
     driver,company=db.session.execute(select(func.sum(RevenueLedger.driver_amount),func.sum(RevenueLedger.company_amount))).one()
-    return dict(active_rides=sum(count for status,count in statuses.items() if status in ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS')),searching_rides=statuses.get('SEARCHING',0),completed_rides=statuses.get('COMPLETED',0),fresh_available_drivers=fresh,stale_available_drivers=max(0,available-fresh),pending_driver_applications=pending,suspended_drivers=suspended,driver_allocations=str(driver or Decimal('0.00')),company_allocations=str(company or Decimal('0.00')),currency='INR',as_of=at.isoformat()+'Z')
+    return dict(active_rides=sum(count for status,count in statuses.items() if status in ('SEARCHING','ASSIGNED','ARRIVING','WAITING','IN_PROGRESS')),searching_rides=statuses.get('SEARCHING',0),completed_rides=statuses.get('COMPLETED',0),cancelled_rides=statuses.get('CANCELLED',0),fresh_available_drivers=fresh,stale_available_drivers=max(0,available-fresh),pending_driver_applications=pending,suspended_drivers=suspended,driver_allocations=str(driver or Decimal('0.00')),company_allocations=str(company or Decimal('0.00')),currency='INR',as_of=at.isoformat()+'Z')
 
 
 def events():

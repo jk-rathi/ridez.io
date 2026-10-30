@@ -69,6 +69,7 @@ def public(ride, user, invitation=False):
     rider = repo.get(User, ride.rider_id)
     vehicle = {'registration':ride.vehicle_registration,'model':ride.vehicle_model,'color':ride.vehicle_color} if ride.vehicle_registration else None
     result = dict(id=ride.id, status=ride.status, round_no=ride.round_no, radius_m=ride.radius_m, quote=quoted.public(), requested_at=ride.requested_at.isoformat() + 'Z', expires_at=ride.expires_at.isoformat() + 'Z', driver={'name': driver.name, 'user_code': driver.user_code, 'vehicle':vehicle} if driver else None, rider={'name': rider.name}, completed_at=ride.completed_at.isoformat() + 'Z' if ride.completed_at else None)
+    result['cancellation'] = cancellation(ride, user) if ride.status == 'CANCELLED' else None
     if not invitation and user.role in ('driver','admin'):
         allocation = repo.get(RevenueLedger, ride.id)
         result['settlement'] = allocation.public() if allocation else None
@@ -193,22 +194,42 @@ def reject(user, ride_id):
     return dict(status=invitation.status)
 
 
+def cancellation(ride, user):
+    actor = repo.get(User, ride.cancelled_by) if ride.cancelled_by else None
+    return {'by': actor.role if actor else None, 'by_you': ride.cancelled_by == user.id,
+            'reason': ride.cancellation_reason or 'Reason was not recorded',
+            'cancelled_at': ride.cancelled_at.isoformat()+'Z' if ride.cancelled_at else None}
+
+
 def move(user, ride_id, action, data=None):
     expire()
     ride = accessible(user, ride_id)
     if action == 'cancel':
-        if user.role != 'rider' or ride.rider_id != user.id:
-            raise ApiError('Only the rider can cancel this request', 403)
+        allowed = (user.role == 'rider' and ride.rider_id == user.id) or (user.role == 'driver' and ride.driver_id == user.id)
+        if not allowed:
+            raise ApiError('Only the rider or assigned driver can cancel this ride', 403)
         if ride.status == 'CANCELLED':
             return public(ride, user)
-        if ride.status != 'SEARCHING':
-            raise ApiError('Only searching requests can be cancelled in this milestone', 409)
-        if not repo.transition(ride.id, 'SEARCHING', 'CANCELLED'):
+        if ride.status not in ('SEARCHING', 'ASSIGNED', 'ARRIVING', 'WAITING'):
+            raise ApiError('Only rides that have not started can be cancelled', 409)
+        if data is not None and not isinstance(data, dict):
+            raise ApiError('A JSON object is required')
+        payload = data or {}
+        # Preserve old searching-cancellation clients; assigned-trip clients must supply a reason.
+        if ride.status == 'SEARCHING' and 'reason' not in payload:
+            reason = 'Rider cancelled the search'
+        else:
+            reason = text(payload, 'reason', 300)
+        previous_status = ride.status
+        if not repo.transition(ride.id, previous_status, 'CANCELLED', cancelled_at=now(), cancelled_by=user.id, cancellation_reason=reason):
             repo.rollback()
-            raise ApiError('Ride changed. Refresh and retry', 409)
+            raise ApiError('Ride changed. Refresh and review before cancelling', 409)
         repo.close_invitations(ride.id, 'CLOSED')
+        if ride.driver_id:
+            repo.set_available(ride.driver_id, False)
         repo.release(ride.id)
-        matching.close_round(ride, 'CANCELLED')
+        if previous_status == 'SEARCHING':
+            matching.close_round(ride, 'CANCELLED')
     else:
         if user.role != 'driver' or ride.driver_id != user.id:
             raise ApiError('Only the assigned driver can progress this trip', 403)
@@ -242,6 +263,11 @@ def snapshot(user):
     rides = repo.all_rides(user)
     active = repo.get(ActiveRide, user.id)
     result = {'rides': [public(ride, user) for ride in rides], 'active_ride': public(repo.get(Ride, active.ride_id), user) if active else None, 'simulator': current_app.config['ROUTE_PROVIDER'] == 'simulator', 'route_provider':current_app.config['ROUTE_PROVIDER'], 'booking_enabled':current_app.config['ROUTE_PROVIDER'] == 'google' or current_app.config['SIMULATOR_ENABLED'], 'user': user.public()}
+    if user.role in ('rider', 'driver'):
+        latest = max(rides, key=lambda row: max(row.requested_at, row.cancelled_at or row.requested_at, row.completed_at or row.requested_at)) if rides else None
+        result['recent_cancellation'] = ({'ride_id': latest.id, **cancellation(latest, user)}
+            if not active and latest and latest.status == 'CANCELLED' and latest.cancelled_at
+            and latest.cancelled_at >= now()-timedelta(minutes=10) else None)
     if user.role == 'rider':
         result['trip_otp'] = rider_trip_otp(user)
     if user.role == 'driver':

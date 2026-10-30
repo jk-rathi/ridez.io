@@ -20,7 +20,7 @@ export function getPosition() {
 export function useDriverLocation({token,enabled,available}) {
   const [error,setError]=useState('');
   useEffect(()=>{
-    if (!enabled) return;
+    if (!enabled) {setError('');return;}
     let stopped=false, timer, permission;
     const controller=new AbortController();
     async function send() {

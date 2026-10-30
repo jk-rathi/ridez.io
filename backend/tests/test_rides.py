@@ -116,7 +116,7 @@ def test_permissions_and_pending_driver(client, actors):
     assert post(client,actors,'second',f"/rides/{ride['id']}/accept").status_code == 404
     assert post(client,actors,'driver',f"/rides/{ride['id']}/accept").status_code == 200
     assert post(client,actors,'rider',f"/rides/{ride['id']}/complete").status_code == 403
-    assert post(client,actors,'rider',f"/rides/{ride['id']}/cancel").status_code == 409
+    assert post(client,actors,'rider',f"/rides/{ride['id']}/cancel").status_code == 400
     assert post(client,actors,'driver','/driver/availability',available=False).status_code == 409
 
 

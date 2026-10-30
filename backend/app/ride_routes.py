@@ -1,4 +1,4 @@
-from flask import g, jsonify
+from flask import g, jsonify, request
 from .routes import api, authenticated, body
 from . import ride_service as service
 
@@ -74,7 +74,7 @@ def reject(ride_id):
 @api.post('/rides/<ride_id>/<action>')
 @authenticated()
 def progress(ride_id, action):
-    return jsonify(ride=service.move(g.user, ride_id, action, body() if action == 'start' else None))
+    return jsonify(ride=service.move(g.user, ride_id, action, body() if action == 'start' else request.get_json(silent=True) if action == 'cancel' else None))
 
 
 @api.post('/admin/drivers/<int:driver_id>/approve')

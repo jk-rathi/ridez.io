@@ -85,7 +85,7 @@ Riders see their fare breakdown and trip details only. Driver/company allocation
 
 The admin overview shows live ride counts, fresh/stale available drivers, pending applications and all-time recorded allocations. **Audit history** provides paginated category/search filters and before/after details for driver approvals, fare policies and revenue settings. See [admin monitoring and privacy](docs/ADMIN_MONITORING.md).
 
-The quote expires after five minutes. Retrying a booking with the same quote returns the same ride. One active ride per participant is enforced through unique database claims. Newly available drivers can be invited in subsequent rounds if fresh and in range, but a driver is never repeatedly invited for the same ride. Searching requests can be cancelled; assigned and in-progress cancellations/incident handling are deferred.
+The quote expires after five minutes. Retrying a booking with the same quote returns the same ride. One active ride per participant is enforced through unique database claims. Newly available drivers can be invited in subsequent rounds if fresh and in range, but a driver is never repeatedly invited for the same ride. Riders can cancel searches, and the rider or assigned driver can cancel before the trip starts with a reason. Both participants see the recorded cancellation; claims are released and assigned drivers remain offline. In-progress interruption remains a separate incident workflow. See [pre-trip cancellation](docs/CANCELLATIONS.md).
 
 Matching deadlines, round history, invitations, and outgoing events are persisted in the database. A one-second background loop advances overdue rounds and marks stale locations even without API traffic. After a restart it catches up to persisted deadlines, skips invitations for already-expired rounds, and resumes pending event delivery. Events can be retried; clients deduplicate IDs and fetch current state. Matching/acceptance use conditional writes and unique participant claims. Final timeout releases the rider's active claim. Set `MATCH_MAX_RADIUS_M` to a 500 m increment between 500 and 10000 to change the search limit. In simulator mode, `SIMULATOR_ENABLED=0` blocks new sample quotes/bookings/online availability/acceptances; going offline and completing assigned rides remain possible. Google mode does not depend on this flag. The simulator defaults off outside development, where the default route provider is Google. A route-provider change requires generating a new quote.
 
@@ -134,7 +134,7 @@ Revenue tests cover role restrictions, percentage bounds/sums, immediate/future 
 
 Privacy/admin tests verify rider settlement exclusion across API responses, preserved fare/driver details, driver/admin financial access, audit authorization/search/pagination, before/after values, live counters and stale-driver totals. Browser checks cover rider receipts/history (including defensive handling of a stale payload), driver earnings, audit filters/details and mobile layout.
 
-Remaining milestones include incident support, account recovery, cancellation policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
+Remaining milestones include incident support, account recovery, commercial cancellation/no-show policies, payment integration, SQL Server integration tests, and production operations. Commercial rate/fee policies and provider billing/retention terms require launch review.
 
 ### Fixed rider trip OTP
 
