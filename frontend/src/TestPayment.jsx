@@ -6,13 +6,13 @@ import { api } from './api';
 const warning='TEST PAYMENT — no money transferred';
 const money=value=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(Number(value));
 
-export function TestPaymentCard({ride,role}) {
+export function TestPaymentCard({ride,role,token}) {
   const [result,setResult]=useState(null),[qr,setQr]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const payment=ride.test_payment || result?.payment;
   async function generate() {
     setBusy(true);setError('');
     try {
-      const data=await api(`/rides/${ride.id}/test-payment`,{method:'POST',body:'{}'});
+      const data=await api(`/rides/${ride.id}/test-payment`,{token,method:'POST',body:'{}'});
       const url=new URL(data.path,window.location.origin).href;
       setQr(await QRCode.toDataURL(url,{width:256,margin:4,errorCorrectionLevel:'M'}));setResult({...data,url});
     } catch(e){setError(e.message);} finally{setBusy(false);}
