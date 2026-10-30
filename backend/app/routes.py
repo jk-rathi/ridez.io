@@ -139,3 +139,27 @@ def logout_all_sessions():
     check_origin()
     logout(g.user, all_devices=True)
     return cookie(jsonify(status='signed_out_all_devices'))
+
+
+@api.get('/ready')
+def readiness():
+    from sqlalchemy import text
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from pathlib import Path
+    from . import db
+    try:
+        expected = current_app.extensions.get('migration_head')
+        if not expected:
+            config = Config()
+            config.set_main_option('script_location', str(Path(__file__).resolve().parents[1] / 'migrations'))
+            expected = ScriptDirectory.from_config(config).get_current_head()
+            current_app.extensions['migration_head'] = expected
+        versions = set(db.session.execute(text('SELECT version_num FROM alembic_version')).scalars())
+        database_ready = versions == {expected}
+        worker_ready = monotonic() - current_app.extensions.get('matching_last_tick', float('-inf')) < 10
+        ready = database_ready and worker_ready
+    except Exception:
+        db.session.rollback()
+        database_ready = worker_ready = ready = False
+    return jsonify(status='ready' if ready else 'not_ready', database=database_ready, matching_worker=worker_ready), 200 if ready else 503

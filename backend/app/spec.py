@@ -86,3 +86,6 @@ for action in ('suspend','reinstate'):
 SPEC['paths']['/admin/drivers/{driver_id}/approve']['post']['requestBody']['content']['application/json']['schema']['properties']['version'] = {'type':'integer','minimum':0,'description':'Optional for legacy approval clients; new clients should send status_revision.'}
 SPEC['components']['schemas']['User']['properties']['status_revision'] = {'type':'integer','minimum':0}
 SPEC['info']['version'] = '0.8.0'
+
+SPEC['paths']['/ready'] = {'get':operation('Read deployment readiness: current migration head and live matching loop')}
+SPEC['paths']['/ready']['get']['responses']['503'] = {'description':'Database schema or matching worker is not ready'}

@@ -31,7 +31,7 @@ def create_app(config=None):
     app.config.update(SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///ridez.db') if development else os.getenv('DATABASE_URL'), JWT_SECRET=jwt_secret, USER_CODE_SECRET=code_secret, SQLALCHEMY_TRACK_MODIFICATIONS=False)
     if config:
         app.config.update(config)
-    app.config.setdefault('SIMULATOR_ENABLED', development and os.getenv('SIMULATOR_ENABLED', '1') == '1')
+    app.config.setdefault('SIMULATOR_ENABLED', os.getenv('SIMULATOR_ENABLED', '1' if development else '0') == '1')
     app.config.setdefault('ROUTE_PROVIDER', os.getenv('ROUTE_PROVIDER', 'simulator' if development else 'google'))
     app.config.setdefault('GOOGLE_MAPS_SERVER_KEY', os.getenv('GOOGLE_MAPS_SERVER_KEY', ''))
     if app.config['ROUTE_PROVIDER'] not in ('google', 'simulator'):
@@ -46,6 +46,21 @@ def create_app(config=None):
         raise RuntimeError('MATCH_MAX_RADIUS_M must be a multiple of 500 between 500 and 10000')
     if not all(app.config.get(k) for k in ('SQLALCHEMY_DATABASE_URI', 'JWT_SECRET', 'USER_CODE_SECRET')):
         raise RuntimeError('DATABASE_URL, JWT_SECRET and USER_CODE_SECRET are required outside development')
+    if not development:
+        for key in ('JWT_SECRET', 'USER_CODE_SECRET'):
+            if len(app.config[key]) < 32:
+                raise RuntimeError(f'{key} must contain at least 32 characters outside development')
+        if app.config['JWT_SECRET'] == app.config['USER_CODE_SECRET']:
+            raise RuntimeError('JWT_SECRET and USER_CODE_SECRET must be distinct')
+        if app.config['ROUTE_PROVIDER'] == 'google' and not app.config['GOOGLE_MAPS_SERVER_KEY']:
+            raise RuntimeError('GOOGLE_MAPS_SERVER_KEY is required for Google routing outside development')
+    app.config.setdefault('TRUST_PROXY_HEADERS', os.getenv('TRUST_PROXY_HEADERS', '0') == '1')
+    app.config.setdefault('FRONTEND_DIST', str(Path(__file__).resolve().parents[1] / 'frontend_dist'))
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, **app.config.get('SQLALCHEMY_ENGINE_OPTIONS', {})}
+    if app.config['TRUST_PROXY_HEADERS']:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        # Enable only behind Render's trusted, TLS-terminating proxy.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     db.init_app(app)
     Migrate(app, db)
     from .routes import api
@@ -53,6 +68,9 @@ def create_app(config=None):
     app.register_blueprint(api, url_prefix='/api/v1')
     from .realtime import init_realtime
     init_realtime(app)
+
+    from .web import register_frontend
+    register_frontend(app)
 
     @app.errorhandler(404)
     def missing(_):

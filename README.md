@@ -6,6 +6,10 @@ Taxi booking application built with **React and JavaScript**, Vite, and Flask. I
 
 **Existing maps already work?** Enable **Places API (New)** and add it alongside Maps JavaScript API in your existing browser key's allowed APIs. Keep website restrictions and the server Routes key unchanged. See [address search and revenue sharing](docs/ADDRESS_SEARCH_AND_REVENUE.md) for update/test steps.
 
+## Deploy on Render
+
+Use the included [Render deployment guide](docs/RENDER_DEPLOYMENT.md) and root `render.yaml` Blueprint. It builds one Docker web service with HTTPS, Gunicorn, startup migrations and a persistent SQLite disk. A paid instance/disk and Google keys are required for the default live-routing setup.
+
 ## Run locally
 
 Prerequisites: Node.js 20.19+ (22.12+ recommended), **Python 3.12**, and two terminals. Python 3.14 is not supported by the pinned pyodbc wheel; use 3.12 to avoid compiling it.
@@ -97,9 +101,9 @@ Development defaults to SQLite and persists random local signing/code secrets un
 
 ## SQL Server and deployment
 
-The SQLAlchemy models and Alembic migrations target SQL Server. Set `DATABASE_URL` with the `mssql+pyodbc` dialect and install Microsoft ODBC Driver 18 before using SQL Server. Supply `JWT_SECRET` and `USER_CODE_SECRET` as distinct strong secrets through environment settings; see `backend/.env.example`. `backend/.env` is loaded at startup without overriding existing process variables. Vite reads `frontend/.env.local`. Both are ignored by Git; examples contain placeholders only. Outside development, set `APP_ENV=production`; database and secrets become mandatory. SQL Server connectivity/concurrency has not been validated in this instance. Do not treat the Flask development server as production hosting.
+The SQLAlchemy models and Alembic migrations target SQL Server. Set `DATABASE_URL` with the `mssql+pyodbc` dialect and install Microsoft ODBC Driver 18 before using SQL Server. Supply `JWT_SECRET` and `USER_CODE_SECRET` as distinct strong secrets through environment settings; see `backend/.env.example`. `backend/.env` is loaded at startup without overriding existing process variables. Vite reads `frontend/.env.local`. Both are ignored by Git; examples contain placeholders only. Outside development, set `APP_ENV=production`; database and secrets become mandatory. SQL Server connectivity/concurrency has not been validated in this instance. The Render image uses Gunicorn; `python run.py` remains the local development server.
 
-Current realtime/worker runtime is **one server process**, intentionally avoiding a separate Redis install for local Windows development. Do not run multiple API workers/instances with this in-process socket dispatcher: production scaling needs a shared message broker, worker ownership, proper process supervision, SQL Server integration tests, and a production Socket.IO server. `/api/v1/health` reports `matching_worker: true` after successful background ticks; false means the loop has not started or is failing/stalled. Delivered outbox records are pruned after seven days. Undelivered events remain for retry.
+Current realtime/worker runtime is **one server process**, intentionally avoiding a separate Redis install for local Windows development. Do not run multiple API workers/instances with this in-process socket dispatcher: production scaling needs a shared message broker, worker ownership and SQL Server integration tests. The Render package supplies a supervised single-worker Gunicorn/Socket.IO server; it does not enable multiple instances. `/api/v1/health` reports `matching_worker: true` after successful background ticks; false means the loop has not started or is failing/stalled. Delivered outbox records are pruned after seven days. Undelivered events remain for retry.
 
 Run migrations with `.venv/bin/flask --app run db upgrade`. Never change existing account-code secrets without a migration plan. No database credentials belong in frontend variables. All business APIs must enforce permissions server-side.
 
