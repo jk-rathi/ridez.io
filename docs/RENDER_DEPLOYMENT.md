@@ -4,6 +4,25 @@ This repository includes a Render Blueprint (`render.yaml`) for **one Docker web
 
 The initial deployment uses SQLite on a persistent disk at `/var/data/ridez.db`. This is suitable for a single-instance pilot. The disk requires a paid Render instance; the Blueprint selects Starter and a 1 GB disk. Review Render's current price before creating it. Do not use an ephemeral/free instance for this database. Do not scale horizontally or add Gunicorn workers: the current in-process matching, socket delivery and rate limiters require one process. Production traffic capacity and SQL Server concurrency are separate validation gates.
 
+## Existing Render service using the Python runtime
+
+Keep your existing service. This repository also supports Render's native Python runtime. In **Settings → Build & Deploy**, set:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | Empty (repository root) |
+| Build Command | `sh deploy/render-build.sh` |
+| Start Command | `sh deploy/render-start.sh` |
+| Health Check Path | `/api/v1/ready` |
+
+Use **Environment** to set `PYTHON_VERSION=3.12.12` and `NODE_VERSION=22`. The repository also pins those versions; an existing Render environment override takes precedence. The previous default Python 3.14 is not the tested runtime for the locked backend dependencies.
+
+Keep all existing database, Google Maps, bootstrap and session settings. Do not regenerate `JWT_SECRET` or `USER_CODE_SECRET`, or replace `DATABASE_URL`. `APP_ENV=production` and `TRUST_PROXY_HEADERS=1` are needed on Render. Browser Google Maps keys must be present during the build as `VITE_GOOGLE_MAPS_BROWSER_KEY`. Restarting a native service now applies migrations and optional admin bootstrap, then starts the same one-worker Gunicorn configuration as Docker. The frontend and APIs share one service/origin.
+
+Select **Manual Deploy → Deploy latest commit** after updating the commands. A root `requirements.txt` is included for compatibility, but `pip install -r requirements.txt` by itself does not build the frontend. Use the full build script above. If the old start command is `python app.py`, `gunicorn app:app`, or a development server, replace it with the start script above.
+
+The Docker Blueprint remains supported. Changing to native Python does not change storage durability: retain any existing persistent disk or database, and keep the database URL pointing to it. Free ephemeral SQLite still loses data across restarts/redeploys.
+
 ## First deployment
 
 1. Open Render and select **New → Blueprint**, connect GitHub, and select `jk-rathi/ridez.io` on `main`. Render reads the root `render.yaml`. Review the plan and disk before creating resources. Alternatively create a Docker Web Service manually using the settings below.
