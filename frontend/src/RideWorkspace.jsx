@@ -5,9 +5,6 @@ import { api } from './api';
 import { getPosition, useDriverLocation } from './useDriverLocation';
 import BookingPanel from './BookingPanel';
 import TripRouteMap from './TripRouteMap';
-import useTripRoute from './useTripRoute';
-import TripProgressCard from './TripProgressCard';
-import { googleNavigationUrl } from './tripNavigation.mjs';
 import OtpInput from './OtpInput';
 import DriverManagement from './DriverManagement';
 import AssignedRideDetails from './AssignedRideDetails';
@@ -71,12 +68,6 @@ function QuoteDetails({ quote }) {
 
 function RideCard({ride,role,perform,disabled,tripOtp,availabilityPreference,token}) {
   const next=actions[ride.status];
-  const navigationUrl=googleNavigationUrl(ride);
-  async function advanceTrip() {
-    if(next[0]==='complete' && !window.confirm('Complete this trip and record the earnings allocation?'))return;
-    const response=await perform(`/rides/${ride.id}/${next[0]}`,next[0]==='start'?{otp}:{});
-    if(next[0]==='start' && response?.ride?.status==='IN_PROGRESS' && navigationUrl)window.location.assign(navigationUrl);
-  }
   const assigned=!!ride.driver && ['ASSIGNED','ARRIVING','WAITING','IN_PROGRESS'].includes(ride.status) && ['rider','driver'].includes(role);
   const [otp,setOtp]=useState(''),[cancelling,setCancelling]=useState(false);
   useEffect(()=>{setOtp('');if(!['SEARCHING','ASSIGNED','ARRIVING','WAITING'].includes(ride.status))setCancelling(false);},[ride.id,ride.status]);
@@ -86,9 +77,8 @@ function RideCard({ride,role,perform,disabled,tripOtp,availabilityPreference,tok
     {assigned?<><AssignedRideDetails ride={ride} role={role} tripOtp={tripOtp}/><details className="ride-fare-breakdown"><summary>View fare breakdown</summary><QuoteDetails quote={ride.quote}/></details></>:<><QuoteDetails quote={ride.quote}/>{ride.driver && <p className="trip-person"><CarFront size={17}/> Driver: {ride.driver.name} · {ride.driver.user_code}{ride.driver.vehicle && ` · ${ride.driver.vehicle.registration}`}</p>}{role==='driver' && <p>Rider: {ride.rider.name}</p>}</>}
     {ride.status==='SEARCHING' && <><Countdown deadline={ride.expires_at}/><p>Round {ride.round_no} · searching within {ride.radius_m} m. Radius expands by 500 m every 30 seconds, up to the configured limit.</p></>}
     {role==='driver' && !cancelling && ride.status==='WAITING' && <OtpInput key={ride.id} onChange={setOtp} disabled={disabled}/>}
-    {role==='driver' && ride.status==='IN_PROGRESS' && navigationUrl && <div className="driver-navigation"><a className="button dark full" href={navigationUrl}>Open Google Maps navigation<ArrowRight size={20}/></a><p>Return to ridez.io to complete the trip. Keep location permission enabled; phone browsers may pause tracking while Google Maps is open.</p></div>}
     {!cancelling && availabilityPreference}
-    {role==='driver' && !cancelling && next && <button className="button dark full trip-primary-action" disabled={disabled || (next[0]==='start' && otp.length!==6)} onClick={advanceTrip}>{next[1]}<ArrowRight size={20}/></button>}
+    {role==='driver' && !cancelling && next && <button className="button dark full trip-primary-action" disabled={disabled || (next[0]==='start' && otp.length!==6)} onClick={()=>{if(next[0]!=='complete' || window.confirm('Complete this trip and record the earnings allocation?'))perform(`/rides/${ride.id}/${next[0]}`,next[0]==='start'?{otp}:{});}}>{next[1]}<ArrowRight size={20}/></button>}
     {((role==='rider' && ['SEARCHING','ASSIGNED','ARRIVING','WAITING'].includes(ride.status)) || (role==='driver' && ride.driver && ['ASSIGNED','ARRIVING','WAITING'].includes(ride.status))) && <CancelRideControl ride={ride} role={role} perform={perform} disabled={disabled} onReview={value=>{setCancelling(value);setOtp('');}}/>}
     {['driver','admin'].includes(role) && ride.settlement && <div className="settlement"><strong>Allocation recorded · not a payment</strong><span>Driver ({ride.settlement.driver_pct}%): {currency(ride.settlement.driver_amount)}</span><span>Company ({ride.settlement.company_pct}%): {currency(ride.settlement.company_amount)}</span></div>}
     <TestPaymentCard ride={ride} role={role} token={token}/>
@@ -96,8 +86,7 @@ function RideCard({ride,role,perform,disabled,tripOtp,availabilityPreference,tok
 }
 
 function ActiveRidePanel({ride,role,perform,disabled,tripOtp,token,availabilityPreference}) {
-  const routeState=useTripRoute(ride,token);
-  return <div className={`active-ride-layout ${ride.quote.provider==='google'?'with-map':''}`}><div className="active-trip-details">{role==='rider' && ride.status==='IN_PROGRESS' && <TripProgressCard ride={ride} routeState={routeState}/>}<RideCard token={token} ride={ride} role={role} perform={perform} disabled={disabled} tripOtp={tripOtp} availabilityPreference={availabilityPreference}/></div>{ride.quote.provider==='google' && <TripRouteMap ride={ride} routeState={routeState}/>}</div>;
+  return <div className={`active-ride-layout ${ride.quote.provider==='google'?'with-map':''}`}><RideCard token={token} ride={ride} role={role} perform={perform} disabled={disabled} tripOtp={tripOtp} availabilityPreference={availabilityPreference}/>{ride.quote.provider==='google' && <TripRouteMap ride={ride} token={token}/>}</div>;
 }
 
 export default function RideWorkspace({role,user,token,view='overview'}) {
